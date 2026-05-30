@@ -2,7 +2,7 @@
 
 ## Introduction and Objective
 
-MoneyUnify Switch is a Laravel + Inertia React application designed to manage payment provider integrations, customer accounts, and transaction flows from a unified dashboard. It combines Laravel Fortify authentication, Sanctum API tokens, and Wayfinder route helpers to deliver a developer-friendly payment orchestration backend with a modern React frontend.
+MoneyUnify Switch is an open-source API platform designed to manage payment provider integrations, customer accounts, and transaction flows from a unified dashboard central unit. It combines It provides a standardized interface for handling multiple payment providers, allowing businesses to easily switch between them without changing their core application logic. The platform supports features such as transaction management, customer account linking, and real-time status updates, making it an ideal solution for businesses looking to streamline their payment processing and reduce dependency on a single provider.
 
 ## Requirements
 
