@@ -24,15 +24,16 @@ class User extends Authenticatable implements PasskeyUser
     use HasFactory, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
     use HasApiTokens;
 
+    public function paymentProviders(): HasMany
+    {
+        return $this->hasMany(PaymentProvider::class);
+    }
+    
     /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>
      */
-    public function paymentProviders(): HasMany
-    {
-        return $this->hasMany(PaymentProvider::class);
-    }
     protected function casts(): array
     {
         return [
