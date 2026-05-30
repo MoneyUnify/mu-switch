@@ -1,0 +1,9 @@
+[mcp_servers.laravel-boost]
+args = [
+    "artisan",
+    "boost:mcp",
+]
+command = "php"
+
+[mcp_servers.laravel-boost.tools.search-docs]
+approval_mode = "approve"

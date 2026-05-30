@@ -10,25 +10,55 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
 use Laravel\Fortify\Contracts\PasskeyUser;
 use Laravel\Fortify\PasskeyAuthenticatable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
 use Laravel\Sanctum\HasApiTokens;
-use App\Models\PaymentProvider;
 
 #[Fillable(['name', 'email', 'password'])]
-#[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
+#[Hidden(['password', 'api_token', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements PasskeyUser
 {
+    use HasApiTokens;
+
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
-    use HasApiTokens;
 
     public function paymentProviders(): HasMany
     {
         return $this->hasMany(PaymentProvider::class);
     }
-    
+
+    public function ensureApiToken(): string
+    {
+        if (! $this->api_token) {
+            $this->forceFill([
+                'api_token' => (string) Str::uuid(),
+            ])->save();
+        }
+
+        return $this->api_token;
+    }
+
+    public function regenerateApiToken(): string
+    {
+        $this->forceFill([
+            'api_token' => (string) Str::uuid(),
+        ])->save();
+
+        return $this->api_token;
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (User $user): void {
+            if (! $user->api_token) {
+                $user->api_token = (string) Str::uuid();
+            }
+        });
+    }
+
     /**
      * Get the attributes that should be cast.
      *

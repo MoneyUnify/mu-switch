@@ -22,4 +22,10 @@ test('new users can register', function () {
 
     $this->assertAuthenticated();
     $response->assertRedirect(route('dashboard', absolute: false));
+
+    $this->assertDatabaseHas('users', [
+        'email' => 'test@example.com',
+    ]);
+
+    expect(auth()->user()->api_token)->toBeString()->not->toBeEmpty();
 });
