@@ -1,0 +1,31 @@
+Source-Available Proprietary License
+
+Licensor: Blessed Jason Mwanza (https://github.com/blessedjasonmwanza)
+Licensed Work: MoneyUnify Payments Switch | mu-switch (https://github.com/MoneyUnify)
+
+1. Grant of License
+Subject to the strict limitations and restrictions set forth in this License, the Licensor hereby grants you a limited, non-exclusive, non-transferable, and revocable right to copy, modify, create derivative works of, and internally deploy the Licensed Work solely for non-commercial, internal testing, and development purposes.
+
+2. Commercial Use Restriction
+Notwithstanding any other provision of this License, Commercial Use of the Licensed Work is strictly prohibited. For the purposes of this License, "Commercial Use" is explicitly defined as deploying or utilizing the Licensed Work to process live, revenue-generating financial transactions. Any such Commercial Use requires a separate, expressly negotiated commercial license directly from the Licensor, Blessed Jason Mwanza.
+
+3. Competitive Hosting and Network Use Restriction
+You may not make the functionality of the Licensed Work, or any modified version or derivative work thereof, available to third parties as a hosted or managed service. This explicitly prohibits offering the Licensed Work as a Software-as-a-Service (SaaS), Platform-as-a-Service (PaaS), Infrastructure-as-a-Service (IaaS), Application Service Provider (ASP), or any other network-based deployment where the primary value, revenue generation, or functionality of the service relies on the Licensed Work.
+
+4. Redistribution Conditions
+If you distribute the Licensed Work or any permitted derivative works for non-commercial testing or development, you must include a complete copy of this License. You must also include prominent notices stating that you changed the Licensed Work (if applicable) and retain all original copyright notices, warranty disclaimers, and limitations of liability. You may not distribute the Licensed Work under any other terms or licenses.
+
+5. Intellectual Property
+All rights, title, and interest in and to the Licensed Work, including all intellectual property rights therein, remain exclusively with the Licensor, Blessed Jason Mwanza. This License does not grant any rights to the Licensor's trademarks, service marks, or logos.
+
+6. Limitation of Liability and Disclaimer of Warranty
+THE LICENSED WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. 
+
+IN NO EVENT SHALL THE LICENSOR (BLESSED JASON MWANZA) OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE LICENSED WORK OR THE USE OR OTHER DEALINGS IN THE LICENSED WORK. 
+
+WITHOUT LIMITING THE GENERALITY OF THE FOREGOING, THE LICENSOR EXPLICITLY DISCLAIMS ANY AND ALL LIABILITY FOR:
+(A) ANY DIRECT, INDIRECT, PUNITIVE, OR CONSEQUENTIAL FINANCIAL LOSSES;
+(B) ANY SECURITY BREACHES, DATA LOSS, OR UNAUTHORIZED ACCESS TO FINANCIAL, TRANSACTIONAL, OR PERSONAL DATA; AND
+(C) ANY REGULATORY COMPLIANCE FAILURES, PENALTIES, OR FINES IMPOSED BY GOVERNMENTAL OR FINANCIAL AUTHORITIES RESULTING FROM THE DEPLOYMENT OR USE OF THIS LICENSED WORK. 
+
+THE ENTIRE RISK AS TO THE QUALITY, SECURITY, COMPLIANCE, AND PERFORMANCE OF THE LICENSED WORK REMAINS STRICTLY WITH YOU.
