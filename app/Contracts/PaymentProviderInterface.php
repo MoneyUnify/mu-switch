@@ -1,11 +1,13 @@
 <?php
 
 namespace App\Contracts;
-use App\Models\Transaction;
+use App\Models\PaymentProvider;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 interface   PaymentProviderInterface
-{
-    
-    public function requestPayment(float $amount, string $currency, array $paymentDetails): Transaction;
+{   
+    public function requestPayment(Request $request):  JsonResponse;
 
-    public function getTransactionStatus(string $transactionId): Transaction;
+    public function setProvider(PaymentProvider $provider): ?JsonResponse;
+    // public function getTransactionStatus(): Transaction;
 }

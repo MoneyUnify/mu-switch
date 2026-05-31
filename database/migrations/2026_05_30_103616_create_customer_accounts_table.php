@@ -14,9 +14,10 @@ return new class extends Migration
     {
         Schema::create('customer_accounts', function (Blueprint $table) {
             $table->id();
-            $table->foreignIdFor(Customer::class)->constrained()->onDelete('cascade');
+            $table->foreignIdFor(Customer::class)->nullable()->default(null)->constrained()->onDelete('cascade');
             $table->string('name');
             $table->string('number'); //account number or identifier
+            $table->string('country')->maxLength(2); //ISO country code
             $table->timestamps();
         });
     }
