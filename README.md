@@ -21,50 +21,24 @@ git clone https://github.com/MoneyUnify/mu-switch.git
 cd mu-switch
 ```
 
-2. Install PHP dependencies:
-
-```bash
-composer install
-```
-
-3. Install JavaScript dependencies:
-
-```bash
-npm install
-```
-
-4. Create the environment file:
+2. Create the environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-5. Generate the application key:
+3. Configure your database connection inside `.env` (SQLite or preferred database).
+
+4. Run the automated setup command:
 
 ```bash
-php artisan key:generate
+composer setup
 ```
 
-6. Configure your database connection inside `.env` - the .env.example file contains the necessary configuration options samples.
-
-7. Run migrations:
-
-> **Note**: The migrations will create the necessary tables for users, payment providers, customers, and transactions. Make sure your database is set up and the connection details in `.env` are correct before running this command.
+5. Start the concurrent development server (runs PHP server, Vite, logs, and queue concurrently):
 
 ```bash
-php artisan migrate
-```
-
-8. Start the development environment:
-
-```bash
-npm run dev
-```
-
-If you prefer the Laravel `setup` shortcut script, you can run:
-
-```bash
-npm run setup
+composer dev
 ```
 
 ## Creating Fake Providers
@@ -83,9 +57,13 @@ php artisan mu:fake-providers user@example.com --count=5
 
 This command will:
 
-- validate that the app environment is `local` or `development`
-- find the user by email
-- create fake `PaymentProvider` records using Faker data
+- Validate that the app environment is `local` or `development`
+- Find the user by email
+- Create fake `PaymentProvider` records using Faker data
+
+## API Documentation & Consumption
+
+To consume the payment switch APIs from external client applications, check the [API Documentation](file:///Users/Abraham/Documents/projects/moneyunify/mu-switch/API_DOCUMENTATION.md) for endpoint specifications, payload parameters, responses, and code integration examples.
 
 ## Authors
 
