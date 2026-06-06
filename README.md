@@ -1,8 +1,16 @@
 # MoneyUnify Switch
 
+![MoneyUnify Logo](public/moneyunify-logo-horizontal.png)
+
 ## Introduction and Objective
 
-MoneyUnify Switch is an open-source API platform designed to manage payment provider integrations, customer accounts, and transaction flows from a unified dashboard central unit. It combines It provides a standardized interface for handling multiple payment providers, allowing businesses to easily switch between them without changing their core application logic. The platform supports features such as transaction management, customer account linking, and real-time status updates, making it an ideal solution for businesses looking to streamline their payment processing and reduce dependency on a single provider.
+MoneyUnify Switch is a source-available, unified payment switch API platform designed to orchestrate payment provider integrations, manage customer accounts, and process transaction flows from a centralized dashboard. The platform provides a standardized interface for multiple payment gateways, allowing applications to initiate collections and automatically failover/retry across configured providers sequentially without modifying core business logic.
+
+With dynamic provider routing, real-time transaction tracking, and automatic provider credential configuration from the admin panel, MoneyUnify Switch ensures high transaction success rates and eliminates single-gateway dependency.
+
+### Documentation
+
+- Refer to the [API Documentation](API_DOCUMENTATION.md) for specifications on authenticating and consuming the payment switch endpoints.
 
 ## Requirements
 
@@ -63,7 +71,7 @@ This command will:
 
 ## API Documentation & Consumption
 
-To consume the payment switch APIs from external client applications, check the [API Documentation](file:///Users/Abraham/Documents/projects/moneyunify/mu-switch/API_DOCUMENTATION.md) for endpoint specifications, payload parameters, responses, and code integration examples.
+To consume the payment switch APIs from external client applications, check the [API Documentation](API_DOCUMENTATION.md) for endpoint specifications, payload parameters, responses, and code integration examples.
 
 ## Authors
 
@@ -103,4 +111,4 @@ If you want to donate, please use the MoneyUnify team or sponsorship links assoc
 
 ## License
 
-This project is licensed under the MIT License. See the `LICENSE.txt` file for full details.
+This project is licensed under a Source-Available Proprietary License. See the [LICENSE.txt](LICENSE.txt) file for full details.

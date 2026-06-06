@@ -1,5 +1,7 @@
 # MoneyUnify Switch API Documentation
 
+![MoneyUnify Logo](public/moneyunify-logo-horizontal.png)
+
 This document describes the external API endpoints available for consuming the MoneyUnify Switch payment processing capabilities.
 
 ## Authentication
