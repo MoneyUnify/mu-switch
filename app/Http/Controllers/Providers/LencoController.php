@@ -169,7 +169,7 @@ class LencoController extends Controller implements PaymentProviderInterface
         }
         $country = $operator === 'tnm' ? 'MW' : ($operator_code === '89' ? 'MW' : 'ZM');
         $account_name = null;
-        if ($country === 'ZM') {
+        if (in_array($country, ['ZM', 'MW'])) {
             $accountExists = CustomerAccount::where('number', $accountNumber)
                 ->where('country', $country)
                 ->whereNotNull('name')
