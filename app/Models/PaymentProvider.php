@@ -22,6 +22,7 @@ class PaymentProvider extends Model
     {
         return [
             'config' => 'array',
+            'is_active' => 'boolean',
         ];
     }
 }

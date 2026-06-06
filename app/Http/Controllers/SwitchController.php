@@ -4,10 +4,8 @@ namespace App\Http\Controllers;
 
 use App\ApiResponse;
 use App\Contracts\PaymentProviderInterface;
-use App\Models\PaymentProvider;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Concurrency;
 
 class SwitchController extends Controller
 {
@@ -52,101 +50,45 @@ class SwitchController extends Controller
             return ApiResponse::error('No active providers support the requested country', 400);
         }
 
-        // 2. Build task closures to run concurrently (using primitive IDs to avoid PDO serialization errors)
-        $tasks = [];
-        $requestData = $request->all();
-        $requestUri = $request->getUri();
-        $requestMethod = $request->getMethod();
-
-        foreach ($filteredProviders as $provider) {
-            $providerId = $provider->id;
-
-            $tasks[] = function () use ($providerId, $requestData, $requestUri, $requestMethod) {
-                // Resolve the provider and reconstruct Request inside the parallel process
-                $provider = PaymentProvider::findOrFail($providerId);
-                $request = Request::create($requestUri, $requestMethod, $requestData);
-
-                // Set user resolver for authentication context
-                $user = $provider->user;
-                if ($user) {
-                    $request->setUserResolver(fn () => $user);
-                }
-
-                $providerClass = $provider->class;
-
-                if (! class_exists($providerClass)) {
-                    return [
-                        'status' => 'error',
-                        'message' => "Payment driver {$providerClass} does not exist.",
-                        'code' => 500,
-                    ];
-                }
-
-                $providerInstance = app($providerClass);
-
-                if (! $providerInstance instanceof PaymentProviderInterface) {
-                    return [
-                        'status' => 'error',
-                        'message' => 'Payment Driver must implement PaymentProviderInterface',
-                        'code' => 500,
-                    ];
-                }
-
-                $config = $providerInstance->setProvider($provider);
-                if ($config instanceof JsonResponse) {
-                    return [
-                        'status' => 'error',
-                        'response' => $config,
-                    ];
-                }
-
-                // Execute the payment on the actual instance
-                $response = $providerInstance->requestPayment($request);
-
-                if ($response instanceof JsonResponse) {
-                    if ($response->getStatusCode() === 200) {
-                        return [
-                            'status' => 'success',
-                            'response' => $response,
-                        ];
-                    }
-
-                    return [
-                        'status' => 'error',
-                        'response' => $response,
-                    ];
-                }
-
-                return [
-                    'status' => 'error',
-                    'message' => 'Invalid response from provider',
-                    'code' => 500,
-                ];
-            };
-        }
-
-        // Execute concurrent tasks (runs sequentially via sync driver in tests)
-        $results = Concurrency::run($tasks);
-
-        // 3. Process results to find the first success or return the last aggregated error
-        $firstSuccess = null;
+        // 2. Iterate through filtered providers sequentially, retrying on failure
         $lastError = null;
 
-        foreach ($results as $result) {
-            if ($result['status'] === 'success') {
-                $firstSuccess = $result['response'];
-                break;
-            } else {
-                if (isset($result['response'])) {
-                    $lastError = $result['response'];
-                } elseif (isset($result['message'])) {
-                    $lastError = ApiResponse::error($result['message'], $result['code'] ?? 500);
-                }
-            }
-        }
+        foreach ($filteredProviders as $provider) {
+            $providerClass = $provider->class;
 
-        if ($firstSuccess) {
-            return $firstSuccess;
+            if (! class_exists($providerClass)) {
+                $lastError = ApiResponse::error("Payment driver {$providerClass} does not exist.", 500);
+
+                continue;
+            }
+
+            $providerInstance = app($providerClass);
+
+            if (! $providerInstance instanceof PaymentProviderInterface) {
+                $lastError = ApiResponse::error('Payment Driver must implement PaymentProviderInterface', 500);
+
+                continue;
+            }
+
+            $config = $providerInstance->setProvider($provider);
+            if ($config instanceof JsonResponse) {
+                $lastError = $config;
+
+                continue;
+            }
+
+            // Execute the payment on the actual instance
+            $response = $providerInstance->requestPayment($request);
+
+            if ($response instanceof JsonResponse) {
+                if ($response->getStatusCode() === 200) {
+                    return $response;
+                }
+
+                $lastError = $response;
+            } else {
+                $lastError = ApiResponse::error('Invalid response from provider', 500);
+            }
         }
 
         return $lastError ?? ApiResponse::error('No provider could process the payment request', 500);
