@@ -28,6 +28,7 @@ class VerifyApiAccess
             return ApiResponse::error('Invalid API token', 401);
         }
         $request->merge(['user' => $user]);
+        $request->setUserResolver(fn () => $user);
 
         return $next($request);
     }

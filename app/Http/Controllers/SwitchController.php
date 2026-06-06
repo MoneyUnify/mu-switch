@@ -38,8 +38,7 @@ class SwitchController extends Controller
             if (!$providerInstance instanceof PaymentProviderInterface) {
                 return ApiResponse::error("Payment Driver must implement PaymentProviderInterface", 500);
             }
-            // TODO - we can optimize this by caching the provider instances and their configs instead of re-instantiating and re-setting config on every request
-            //TODO - we can also optimize by running the providers in parallel instead of sequentially to reduce latency, but that would require more complex error handling and response aggregation logic
+            //TODO - we can optimize by running the providers in parallel instead of sequentially to reduce latency, but that would require more complex error handling and response aggregation logic
             //TODO - we can also optimize by allowing providers to specify which countries or account types they support in their config, so we can skip calling unsupported providers altogether instead of calling them and letting them fail
             $config = $providerInstance->setProvider($provider);
             if($config instanceof JsonResponse) {
