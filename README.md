@@ -49,26 +49,6 @@ composer setup
 composer dev
 ```
 
-## Creating Fake Providers
-
-A development-only Artisan command exists to create fake payment providers for a given user email. It is intentionally restricted to `local` or `development` environments.
-
-```bash
-php artisan mu:fake-providers user@example.com
-```
-
-To create a custom number of providers:
-
-```bash
-php artisan mu:fake-providers user@example.com --count=5
-```
-
-This command will:
-
-- Validate that the app environment is `local` or `development`
-- Find the user by email
-- Create fake `PaymentProvider` records using Faker data
-
 ## API Documentation & Consumption
 
 To consume the payment switch APIs from external client applications, check the [API Documentation](API_DOCUMENTATION.md) for endpoint specifications, payload parameters, responses, and code integration examples.
