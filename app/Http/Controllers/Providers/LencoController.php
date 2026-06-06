@@ -18,6 +18,10 @@ use Illuminate\Support\Str;
 
 class LencoController extends Controller implements PaymentProviderInterface
 {
+    public const PROVIDER_NAME = 'Lenco';
+
+    public const DEFAULT_COUNTRIES = 'ZM,MW';
+
     public string $api_key {
         set(string $value) => trim($value);
     }

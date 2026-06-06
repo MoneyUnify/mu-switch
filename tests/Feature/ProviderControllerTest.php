@@ -35,6 +35,9 @@ test('user can view their own providers', function () {
             ->component('providers/index')
             ->has('providers', 1)
             ->where('providers.0.name', 'User Provider')
+            ->has('availableDrivers')
+            ->where('availableDrivers.0.name', 'Lenco')
+            ->where('availableDrivers.0.class', 'App\\Http\\Controllers\\Providers\\LencoController')
         );
 });
 

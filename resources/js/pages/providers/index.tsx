@@ -23,13 +23,21 @@ interface PaymentProvider {
     is_active: boolean;
 }
 
-interface IndexProps {
-    providers: PaymentProvider[];
+interface AvailableDriver {
+    name: string;
+    class: string;
+    default_countries: string;
 }
 
-export default function Index({ providers }: IndexProps) {
+interface IndexProps {
+    providers: PaymentProvider[];
+    availableDrivers: AvailableDriver[];
+}
+
+export default function Index({ providers, availableDrivers = [] }: IndexProps) {
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [editingProvider, setEditingProvider] = useState<PaymentProvider | null>(null);
+    const [selectedDriver, setSelectedDriver] = useState<AvailableDriver | null>(null);
 
     const {
         data,
@@ -42,7 +50,7 @@ export default function Index({ providers }: IndexProps) {
         reset,
     } = useForm({
         name: '',
-        class: 'App\\Http\\Controllers\\Providers\\LencoController',
+        class: '',
         api_key: '',
         supported_countries: 'ZM,MW',
         logo_url: '',
@@ -51,6 +59,7 @@ export default function Index({ providers }: IndexProps) {
 
     const openCreateModal = () => {
         reset();
+        setSelectedDriver(null);
         setIsCreateOpen(true);
     };
 
@@ -72,6 +81,7 @@ export default function Index({ providers }: IndexProps) {
         post(providersRoute.store.url(), {
             onSuccess: () => {
                 setIsCreateOpen(false);
+                setSelectedDriver(null);
                 toast.success('Provider created successfully');
                 reset();
             },
@@ -202,96 +212,157 @@ export default function Index({ providers }: IndexProps) {
             </div>
 
             {/* Create Modal */}
-            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                <DialogContent>
+            <Dialog open={isCreateOpen} onOpenChange={(open) => {
+                setIsCreateOpen(open);
+                if (!open) setSelectedDriver(null);
+            }}>
+                <DialogContent className={selectedDriver === null ? "sm:max-w-[500px]" : "sm:max-w-[450px]"}>
                     <DialogHeader>
-                        <DialogTitle>Add Payment Provider</DialogTitle>
+                        <DialogTitle>
+                            {selectedDriver === null ? "Select Provider Driver" : `Configure ${selectedDriver.name}`}
+                        </DialogTitle>
                         <DialogDescription>
-                            Configure a new integration class and assign appropriate credentials.
+                            {selectedDriver === null
+                                ? "Choose which payment provider driver you want to configure for the switch."
+                                : `Configure settings for the ${selectedDriver.name} driver.`}
                         </DialogDescription>
                     </DialogHeader>
-                    <form onSubmit={handleCreate} className="space-y-4 py-2">
-                        <div className="space-y-1">
-                            <Label htmlFor="name">Provider Name</Label>
-                            <Input
-                                id="name"
-                                value={data.name}
-                                onChange={(e) => setData('name', e.target.value)}
-                                placeholder="e.g. Lenco Production"
-                                required
-                            />
-                            {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
-                        </div>
 
-                        <div className="space-y-1">
-                            <Label htmlFor="class">Driver Class Name</Label>
-                            <Input
-                                id="class"
-                                value={data.class}
-                                onChange={(e) => setData('class', e.target.value)}
-                                placeholder="App\Http\Controllers\Providers\LencoController"
-                                required
-                            />
-                            {errors.class && <p className="text-xs text-red-500">{errors.class}</p>}
-                        </div>
+                    {selectedDriver === null ? (
+                        <div className="space-y-4 py-2">
+                            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 mt-2 max-h-[350px] overflow-y-auto pr-1">
+                                {availableDrivers.map((driver) => (
+                                    <div
+                                        key={driver.class}
+                                        onClick={() => {
+                                            setSelectedDriver(driver);
+                                            setData((d) => ({
+                                                ...d,
+                                                class: driver.class,
+                                                name: d.name || driver.name,
+                                                supported_countries: d.supported_countries || driver.default_countries,
+                                            }));
+                                        }}
+                                        className="group flex flex-col justify-between p-4 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:border-black dark:hover:border-white bg-neutral-50/50 dark:bg-neutral-900/50 cursor-pointer transition-all duration-200 shadow-sm hover:shadow-md"
+                                    >
+                                        <div className="space-y-1">
+                                            <div className="font-semibold text-neutral-900 dark:text-neutral-100 group-hover:text-black dark:group-hover:text-white flex items-center gap-2">
+                                                <FileCode className="h-4 w-4 text-neutral-500" />
+                                                {driver.name}
+                                            </div>
+                                            <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate max-w-[200px]" title={driver.class}>
+                                                {driver.class.split('\\').pop()}
+                                            </div>
+                                        </div>
+                                        <div className="text-xs text-neutral-500 mt-4 flex items-center gap-1">
+                                            <Globe className="h-3 w-3" />
+                                            Supports: <span className="font-medium text-neutral-700 dark:text-neutral-300">{driver.default_countries}</span>
+                                        </div>
+                                    </div>
+                                ))}
 
-                        <div className="space-y-1">
-                            <Label htmlFor="api_key">API Key / Token</Label>
-                            <Input
-                                id="api_key"
-                                type="password"
-                                value={data.api_key}
-                                onChange={(e) => setData('api_key', e.target.value)}
-                                placeholder="sk_live_..."
-                                required
-                            />
-                            {errors.api_key && <p className="text-xs text-red-500">{errors.api_key}</p>}
-                        </div>
+                                {availableDrivers.length === 0 && (
+                                    <div className="col-span-full text-center py-6 text-sm text-neutral-500">
+                                        No drivers discovered in app/Http/Controllers/Providers/
+                                    </div>
+                                )}
+                            </div>
 
-                        <div className="space-y-1">
-                            <Label htmlFor="supported_countries">Supported Countries (Comma separated)</Label>
-                            <Input
-                                id="supported_countries"
-                                value={data.supported_countries}
-                                onChange={(e) => setData('supported_countries', e.target.value)}
-                                placeholder="ZM,MW"
-                                required
-                            />
-                            {errors.supported_countries && <p className="text-xs text-red-500">{errors.supported_countries}</p>}
+                            <DialogFooter className="pt-4 border-t border-neutral-100 dark:border-neutral-900">
+                                <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)} className="cursor-pointer">
+                                    Cancel
+                                </Button>
+                            </DialogFooter>
                         </div>
+                    ) : (
+                        <form onSubmit={handleCreate} className="space-y-4 py-2">
+                            <div className="space-y-1">
+                                <Label htmlFor="name">Provider Name</Label>
+                                <Input
+                                    id="name"
+                                    value={data.name}
+                                    onChange={(e) => setData('name', e.target.value)}
+                                    placeholder="e.g. Lenco Production"
+                                    required
+                                />
+                                {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
+                            </div>
 
-                        <div className="space-y-1">
-                            <Label htmlFor="logo_url">Logo URL (Optional)</Label>
-                            <Input
-                                id="logo_url"
-                                type="url"
-                                value={data.logo_url}
-                                onChange={(e) => setData('logo_url', e.target.value)}
-                                placeholder="https://..."
-                            />
-                            {errors.logo_url && <p className="text-xs text-red-500">{errors.logo_url}</p>}
-                        </div>
+                            <div className="space-y-1">
+                                <Label htmlFor="class">Driver Class Name</Label>
+                                <Input
+                                    id="class"
+                                    value={data.class}
+                                    disabled
+                                    className="bg-neutral-100 dark:bg-neutral-900 cursor-not-allowed opacity-80"
+                                    required
+                                />
+                                {errors.class && <p className="text-xs text-red-500">{errors.class}</p>}
+                            </div>
 
-                        <div className="flex items-center space-x-2 pt-2">
-                            <Checkbox
-                                id="is_active"
-                                checked={data.is_active}
-                                onCheckedChange={(checked) => setData('is_active', !!checked)}
-                            />
-                            <Label htmlFor="is_active" className="text-sm font-medium cursor-pointer">
-                                Active (enable this provider in the switch routing queue)
-                            </Label>
-                        </div>
+                            <div className="space-y-1">
+                                <Label htmlFor="api_key">API Key / Token</Label>
+                                <Input
+                                    id="api_key"
+                                    type="password"
+                                    value={data.api_key}
+                                    onChange={(e) => setData('api_key', e.target.value)}
+                                    placeholder="sk_live_..."
+                                    required
+                                />
+                                {errors.api_key && <p className="text-xs text-red-500">{errors.api_key}</p>}
+                            </div>
 
-                        <DialogFooter className="pt-4">
-                            <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)} className="cursor-pointer">
-                                Cancel
-                            </Button>
-                            <Button type="submit" disabled={processing} className="cursor-pointer">
-                                Create Provider
-                            </Button>
-                        </DialogFooter>
-                    </form>
+                            <div className="space-y-1">
+                                <Label htmlFor="supported_countries">Supported Countries (Comma separated)</Label>
+                                <Input
+                                    id="supported_countries"
+                                    value={data.supported_countries}
+                                    onChange={(e) => setData('supported_countries', e.target.value)}
+                                    placeholder="ZM,MW"
+                                    required
+                                />
+                                {errors.supported_countries && <p className="text-xs text-red-500">{errors.supported_countries}</p>}
+                            </div>
+
+                            <div className="space-y-1">
+                                <Label htmlFor="logo_url">Logo URL (Optional)</Label>
+                                <Input
+                                    id="logo_url"
+                                    type="url"
+                                    value={data.logo_url}
+                                    onChange={(e) => setData('logo_url', e.target.value)}
+                                    placeholder="https://..."
+                                />
+                                {errors.logo_url && <p className="text-xs text-red-500">{errors.logo_url}</p>}
+                            </div>
+
+                            <div className="flex items-center space-x-2 pt-2">
+                                <Checkbox
+                                    id="is_active"
+                                    checked={data.is_active}
+                                    onCheckedChange={(checked) => setData('is_active', !!checked)}
+                                />
+                                <Label htmlFor="is_active" className="text-sm font-medium cursor-pointer">
+                                    Active (enable this provider in the switch routing queue)
+                                </Label>
+                            </div>
+
+                            <DialogFooter className="pt-4 border-t border-neutral-100 dark:border-neutral-900 flex flex-row justify-between sm:justify-between items-center gap-2">
+                                <Button type="button" variant="ghost" onClick={() => setSelectedDriver(null)} className="cursor-pointer gap-1">
+                                    &larr; Back
+                                </Button>
+                                <div className="flex gap-2">
+                                    <Button type="button" variant="outline" onClick={() => setIsCreateOpen(false)} className="cursor-pointer">
+                                        Cancel
+                                    </Button>
+                                    <Button type="submit" disabled={processing} className="cursor-pointer">
+                                        Create Provider
+                                    </Button>
+                                </div>
+                            </DialogFooter>
+                        </form>
+                    )}
                 </DialogContent>
             </Dialog>
 
@@ -321,7 +392,8 @@ export default function Index({ providers }: IndexProps) {
                             <Input
                                 id="edit-class"
                                 value={data.class}
-                                onChange={(e) => setData('class', e.target.value)}
+                                disabled
+                                className="bg-neutral-100 dark:bg-neutral-900 cursor-not-allowed opacity-80"
                                 required
                             />
                             {errors.class && <p className="text-xs text-red-500">{errors.class}</p>}

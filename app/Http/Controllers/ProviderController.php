@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Contracts\PaymentProviderInterface;
 use App\Models\PaymentProvider;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,8 +16,32 @@ class ProviderController extends Controller
      */
     public function index(Request $request): Response
     {
+        $drivers = [];
+        $files = glob(app_path('Http/Controllers/Providers/*.php'));
+
+        if ($files) {
+            foreach ($files as $file) {
+                $className = 'App\\Http\\Controllers\\Providers\\'.pathinfo($file, PATHINFO_FILENAME);
+                if (class_exists($className) && is_subclass_of($className, PaymentProviderInterface::class)) {
+                    $name = defined($className.'::PROVIDER_NAME') ? $className::PROVIDER_NAME : pathinfo($file, PATHINFO_FILENAME);
+                    if (! defined($className.'::PROVIDER_NAME') && str_ends_with($name, 'Controller')) {
+                        $name = substr($name, 0, -10);
+                    }
+
+                    $defaultCountries = defined($className.'::DEFAULT_COUNTRIES') ? $className::DEFAULT_COUNTRIES : 'ZM,MW';
+
+                    $drivers[] = [
+                        'name' => $name,
+                        'class' => $className,
+                        'default_countries' => $defaultCountries,
+                    ];
+                }
+            }
+        }
+
         return Inertia::render('providers/index', [
             'providers' => $request->user()->paymentProviders()->get(),
+            'availableDrivers' => $drivers,
         ]);
     }
 
