@@ -15,17 +15,18 @@
 
     --container-8xl: 88rem;
 
-    --color-primary-50: #fff7ed;
-    --color-primary-100: #ffedd5;
-    --color-primary-200: #fed7aa;
-    --color-primary-300: #fdba74;
-    --color-primary-400: #fb923c;
-    --color-primary-500: #f97316;
-    --color-primary-600: #ea580c;
-    --color-primary-700: #c2410c;
-    --color-primary-800: #9a3412;
-    --color-primary-900: #7c2d12;
-    --color-primary-950: #431407;
+    /* MoneyUnify brand blue (anchored on #2d6fbe) */
+    --color-primary-50: #f3f8fe;
+    --color-primary-100: #deebfc;
+    --color-primary-200: #cee2fa;
+    --color-primary-300: #bbd4f5;
+    --color-primary-400: #82abe0;
+    --color-primary-500: #2d6fbe;
+    --color-primary-600: #1d61af;
+    --color-primary-700: #1a5290;
+    --color-primary-800: #173f6e;
+    --color-primary-900: #173356;
+    --color-primary-950: #0e2138;
 
     --color-gray-50: #fafaf9;
     --color-gray-100: #f5f5f4;

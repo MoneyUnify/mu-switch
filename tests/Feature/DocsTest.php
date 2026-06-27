@@ -43,11 +43,13 @@ test('documentation pages are MoneyUnify-branded and free of vendor branding', f
     }
 });
 
-test('the sidebar watermark is "Powered by MoneyUnify" linking to the repo', function () {
+test('the sidebar watermark credits MoneyUnify and Blessed Jason Mwanza', function () {
     $this->get('/docs')
         ->assertOk()
         ->assertSee('Powered by MoneyUnify', false)
-        ->assertSee('https://github.com/blessedjasonmwanza/MoneyUnify', false);
+        ->assertSee('https://github.com/blessedjasonmwanza/MoneyUnify', false)
+        ->assertSee('Blessed Jason Mwanza', false)
+        ->assertSee('https://github.com/blessedjasonmwanza/', false);
 });
 
 test('the documentation header uses the MoneyUnify logo', function () {

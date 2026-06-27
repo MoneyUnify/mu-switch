@@ -23,15 +23,26 @@
         class="sticky top-[4.75rem] -ml-0.5 flex h-[calc(100vh-4.75rem)] w-64 flex-col justify-between overflow-x-hidden overflow-y-auto pt-16 pr-8 pb-4 pl-0.5 xl:w-72 xl:pr-16"
     >
         <x-prezet.nav :nav="$nav" />
-        <div class="mt-16 text-xs text-gray-400">
+        <div class="mt-16 space-y-0.5 text-xs text-gray-400">
             <a
                 target="_blank"
                 rel="noopener"
                 href="https://github.com/blessedjasonmwanza/MoneyUnify"
-                class="hover:text-gray-600"
+                class="block transition-colors hover:text-primary-600"
             >
                 Powered by MoneyUnify
             </a>
+            <span class="block">
+                cc:
+                <a
+                    target="_blank"
+                    rel="noopener"
+                    href="https://github.com/blessedjasonmwanza/"
+                    class="font-medium text-gray-500 transition-colors hover:text-primary-600"
+                >
+                    Blessed Jason Mwanza
+                </a>
+            </span>
         </div>
     </div>
 </div>
