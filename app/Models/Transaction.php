@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use App\Enums\TransactionStatus;
+use Illuminate\Database\Eloquent\Model;
 
 class Transaction extends Model
 {
@@ -18,15 +18,21 @@ class Transaction extends Model
         'provider_response',
         'direction',
         'is_fx',
-        'fx_rate'
+        'fx_rate',
     ];
-
 
     public function paymentProvider()
     {
         return $this->belongsTo(PaymentProvider::class);
     }
-    protected function casts(): array {
+
+    public function customer()
+    {
+        return $this->belongsTo(Customer::class);
+    }
+
+    protected function casts(): array
+    {
         return [
             'status' => TransactionStatus::class,
         ];

@@ -16,7 +16,8 @@
         "laravel/framework": "^13.7",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
-        "laravel/wayfinder": "^0.1.14"
+        "laravel/wayfinder": "^0.1.14",
+        "prezet/prezet": "^1.0@rc"
     },
     "require-dev": {
         "fakerphp/faker": "^1.24",
@@ -46,8 +47,10 @@
         "setup": [
             "composer install",
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
+            "@php -r \"file_exists('database/database.sqlite') || touch('database/database.sqlite');\"",
             "@php artisan key:generate",
             "@php artisan migrate --force",
+            "@php artisan docs:index --fresh",
             "npm install",
             "npm run build"
         ],

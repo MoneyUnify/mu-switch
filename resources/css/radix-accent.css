@@ -1,0 +1,78 @@
+/*
+ * MoneyUnify brand accent — overrides the Radix Themes "blue" scale so the
+ * whole app's accent (Theme accentColor="blue") uses the brand blue (#2d6fbe).
+ * Must be imported AFTER @radix-ui/themes/styles.css so it wins the cascade.
+ */
+:root,
+.light,
+.light-theme {
+    --blue-1: #fcfdfe;
+    --blue-2: #f6f9fe;
+    --blue-3: #ecf3fb;
+    --blue-4: #deebfc;
+    --blue-5: #cee2fa;
+    --blue-6: #bbd4f5;
+    --blue-7: #a4c3eb;
+    --blue-8: #82abe0;
+    --blue-9: #2d6fbe;
+    --blue-10: #1d61af;
+    --blue-11: #2c6ebd;
+    --blue-12: #173356;
+
+    --blue-a1: #0055aa03;
+    --blue-a2: #0055e309;
+    --blue-a3: #005eca13;
+    --blue-a4: #0065e821;
+    --blue-a5: #0069e531;
+    --blue-a6: #005eda44;
+    --blue-a7: #0157c75b;
+    --blue-a8: #0054c07d;
+    --blue-a9: #0050b0d2;
+    --blue-a10: #004da5e2;
+    --blue-a11: #0050afd3;
+    --blue-a12: #001f45e8;
+
+    --blue-contrast: #fff;
+    --blue-surface: #f4f8fecc;
+    --blue-indicator: #2d6fbe;
+    --blue-track: #2d6fbe;
+}
+
+@supports (color: color(display-p3 1 1 1)) {
+    @media (color-gamut: p3) {
+        :root,
+        .light,
+        .light-theme {
+            --blue-1: oklch(99.4% 0.0019 255);
+            --blue-2: oklch(98.2% 0.0067 255);
+            --blue-3: oklch(96% 0.014 255);
+            --blue-4: oklch(93.6% 0.0269 255);
+            --blue-5: oklch(90.5% 0.0397 255);
+            --blue-6: oklch(86.3% 0.0526 255);
+            --blue-7: oklch(80.8% 0.0662 255);
+            --blue-8: oklch(73.3% 0.089 255);
+            --blue-9: oklch(54% 0.1404 255);
+            --blue-10: oklch(49.4% 0.1404 255);
+            --blue-11: oklch(53.8% 0.1404 255);
+            --blue-12: oklch(31.9% 0.0711 255);
+
+            --blue-a1: color(display-p3 0.0235 0.349 0.6745 / 0.012);
+            --blue-a2: color(display-p3 0.0196 0.2667 0.8784 / 0.032);
+            --blue-a3: color(display-p3 0.0078 0.3373 0.7255 / 0.071);
+            --blue-a4: color(display-p3 0.0039 0.3608 0.8431 / 0.122);
+            --blue-a5: color(display-p3 0.0039 0.3373 0.8471 / 0.177);
+            --blue-a6: color(display-p3 0.0039 0.3059 0.7961 / 0.248);
+            --blue-a7: color(display-p3 0.0039 0.2863 0.7216 / 0.334);
+            --blue-a8: color(display-p3 0.0039 0.2745 0.6941 / 0.459);
+            --blue-a9: color(display-p3 0 0.2471 0.6314 / 0.753);
+            --blue-a10: color(display-p3 0 0.2235 0.5804 / 0.804);
+            --blue-a11: color(display-p3 0 0.2431 0.6275 / 0.757);
+            --blue-a12: color(display-p3 0 0.0902 0.2353 / 0.883);
+
+            --blue-contrast: #fff;
+            --blue-surface: color(display-p3 0.9608 0.9725 0.9922 / 0.8);
+            --blue-indicator: oklch(54% 0.1404 255);
+            --blue-track: oklch(54% 0.1404 255);
+        }
+    }
+}

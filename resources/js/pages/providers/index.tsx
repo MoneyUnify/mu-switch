@@ -2,7 +2,7 @@ import { Head, useForm } from '@inertiajs/react';
 import { Plus, Settings, Trash2, CheckCircle2, XCircle, Globe, Key, FileCode } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { Button } from '@radix-ui/themes';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -125,8 +125,8 @@ export default function Index({ providers, availableDrivers = [] }: IndexProps) 
             <div className="flex h-full flex-1 flex-col gap-6 p-6 overflow-x-auto rounded-xl">
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold tracking-tight">Payment Providers</h1>
-                        <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                        <h1 className="text-lg font-semibold tracking-tight">Payment Providers</h1>
+                        <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
                             Configure payment gateways, credentials, and regional availability for your transaction switch.
                         </p>
                     </div>
@@ -152,7 +152,7 @@ export default function Index({ providers, availableDrivers = [] }: IndexProps) 
                                             </div>
                                         )}
                                         <div>
-                                            <CardTitle className="text-base font-semibold">{provider.name}</CardTitle>
+                                            <CardTitle className="text-sm font-semibold">{provider.name}</CardTitle>
                                             <CardDescription className="text-xs font-mono mt-0.5 truncate max-w-[180px]">
                                                 {provider.class.split('\\').pop()}
                                             </CardDescription>
@@ -187,10 +187,10 @@ export default function Index({ providers, availableDrivers = [] }: IndexProps) 
                                     </div>
                                 </CardContent>
                                 <CardFooter className="flex justify-end gap-2 border-t border-sidebar-border/30 dark:border-sidebar-border/50 pt-3">
-                                    <Button variant="outline" size="sm" onClick={() => openEditModal(provider)} className="cursor-pointer">
+                                    <Button variant="outline" size="1" onClick={() => openEditModal(provider)} className="cursor-pointer">
                                         Edit
                                     </Button>
-                                    <Button variant="destructive" size="sm" onClick={() => handleDelete(provider.id)} className="cursor-pointer">
+                                    <Button color="red" size="1" onClick={() => handleDelete(provider.id)} className="cursor-pointer">
                                         <Trash2 className="h-4 w-4" />
                                     </Button>
                                 </CardFooter>

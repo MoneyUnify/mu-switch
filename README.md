@@ -10,15 +10,17 @@ With dynamic provider routing, real-time transaction tracking, and automatic pro
 
 ### Documentation
 
-- Refer to the [API Documentation](API_DOCUMENTATION.md) for specifications on authenticating and consuming the payment switch endpoints.
+MoneyUnify Switch ships with a built-in documentation site served at the **`/docs`** route (installation, provider configuration, and the full API reference). It is generated from the Markdown files in [`prezet/content`](prezet/content). See [Documentation Site (`/docs`)](#documentation-site-docs) below for how to bring it up.
+
+A standalone [API Documentation](API_DOCUMENTATION.md) file is also available for quick reference.
 
 ## Requirements
 
-- PHP 8.5+
-- Composer
-- Node.js 18+ / npm or pnpm
-- PostgreSQL preferably (you can use any db that supports native JSON columns)(configured via `.env`)
-- Git
+- **PHP 8.3+** (8.5 recommended) with the `dom` and `gd` extensions enabled
+- **Composer** 2.x
+- **Node.js 20+** with npm (pnpm or yarn also work)
+- A database — **SQLite is the zero-config default**; MySQL or PostgreSQL also work (any engine with native JSON support), configured via `.env`
+- **Git**
 
 ## Local Setup
 
@@ -29,29 +31,67 @@ git clone https://github.com/MoneyUnify/mu-switch.git
 cd mu-switch
 ```
 
-2. Create the environment file:
-
-```bash
-cp .env.example .env
-```
-
-3. Configure your database connection inside `.env` (SQLite or preferred database).
-
-4. Run the automated setup command:
+2. Run the automated setup command:
 
 ```bash
 composer setup
 ```
 
-5. Start the concurrent development server (runs PHP server, Vite, logs, and queue concurrently):
+   This single command bootstraps everything:
+   - installs Composer and npm dependencies,
+   - creates your `.env` file (from `.env.example`) and the SQLite database file,
+   - generates the application key,
+   - runs the database migrations,
+   - **builds the documentation index** so the `/docs` site is live,
+   - compiles the front-end assets (`npm run build`).
+
+   > **Using MySQL/PostgreSQL instead of SQLite?** Edit the `DB_*` values in `.env`
+   > before running `composer setup` (or run `php artisan migrate` again afterward).
+
+3. Start the development environment (runs the PHP server, Vite, queue worker, and log viewer concurrently):
 
 ```bash
 composer dev
 ```
 
+4. Open the app and create your first account:
+   - Application: <http://localhost:8000>
+   - Documentation: <http://localhost:8000/docs>
+
+   After registering, your **API token** is shown on the dashboard, and you can add a
+   payment provider from the **Providers** page.
+
+## Documentation Site (`/docs`)
+
+The in-app documentation lives at the **`/docs`** route and is powered by Markdown
+files in [`prezet/content`](prezet/content), indexed into a small SQLite catalogue
+for search and navigation.
+
+`composer setup` already builds this index, so after setup the docs are live at
+<http://localhost:8000/docs>. You only need to rebuild the index when you **add or
+edit** documentation:
+
+```bash
+php artisan docs:index --fresh
+```
+
+Tips:
+
+- While running `composer dev` (or `npm run dev`), the docs index **rebuilds
+  automatically** whenever you change a file under `prezet/`.
+- In **production**, run `php artisan docs:index --fresh` as part of your deploy
+  (after pulling new content) so `/docs` reflects the latest documentation.
+- To edit the docs, update the Markdown in `prezet/content/` and the sidebar
+  navigation in `prezet/SUMMARY.md`.
+
 ## API Documentation & Consumption
 
-To consume the payment switch APIs from external client applications, check the [API Documentation](API_DOCUMENTATION.md) for endpoint specifications, payload parameters, responses, and code integration examples.
+To consume the payment switch APIs from external client applications, read the
+**API Reference** at [`/docs`](http://localhost:8000/docs) (or the standalone
+[API Documentation](API_DOCUMENTATION.md)) for endpoint specifications, payload
+parameters, responses, and integration examples. In short: your application sends
+a single authenticated request to `POST /api/v1/payment/request`, and the switch
+routes it across your active providers with automatic fallback.
 
 ## Authors
 

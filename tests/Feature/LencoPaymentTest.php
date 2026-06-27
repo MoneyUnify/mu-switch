@@ -2,6 +2,8 @@
 
 use App\Enums\TransactionStatus;
 use App\Http\Controllers\Providers\LencoController;
+use App\Models\Customer;
+use App\Models\CustomerAccount;
 use App\Models\PaymentProvider;
 use App\Models\Transaction;
 use App\Models\User;
@@ -81,6 +83,74 @@ test('lenco provider requests payment successfully', function () {
         'amount' => 150.50,
         'currency' => 'ZMW',
         'status' => TransactionStatus::PENDING->value,
+    ]);
+});
+
+test('repeated payment requests for the same number do not violate the unique customer email', function () {
+    Http::fake([
+        '*/resolve/mobile-money' => Http::response([
+            'status' => true,
+            'message' => 'Resolved',
+            'data' => ['accountName' => 'Blessed Mwanza', 'operator' => 'mtn', 'country' => 'zm'],
+        ], 200),
+        // Real providers return a unique reference per call.
+        '*/collections/mobile-money' => Http::sequence()
+            ->push(['status' => true, 'data' => ['lencoReference' => 'LENCO-REF-1']], 200)
+            ->push(['status' => true, 'data' => ['lencoReference' => 'LENCO-REF-2']], 200),
+    ]);
+
+    $user = User::factory()->create(['api_token' => 'token-repeat']);
+    PaymentProvider::create([
+        'user_id' => $user->id,
+        'name' => 'Lenco Provider',
+        'config' => ['api_key' => 'lenco_key'],
+        'class' => LencoController::class,
+        'is_active' => true,
+    ]);
+
+    $payload = ['amount' => 10, 'account_number' => '0971943638', 'country' => 'ZM'];
+
+    // The same payer pays twice — previously the second attempt threw a unique
+    // constraint violation on customers.email.
+    $this->withToken('token-repeat')->postJson('/api/v1/payment/request', $payload)->assertOk();
+    $this->withToken('token-repeat')->postJson('/api/v1/payment/request', $payload)->assertOk();
+
+    expect(Customer::where('email', '0971943638@moneyunify.local')->count())->toBe(1);
+    expect(CustomerAccount::where('number', '0971943638')->where('country', 'ZM')->count())->toBe(1);
+    expect(Transaction::count())->toBe(2);
+});
+
+test('a pre-existing customer with the same email does not break a new payment', function () {
+    Http::fake([
+        '*/resolve/mobile-money' => Http::response([
+            'status' => true,
+            'data' => ['accountName' => 'Blessed Mwanza', 'operator' => 'mtn', 'country' => 'zm'],
+        ], 200),
+        '*/collections/mobile-money' => Http::response([
+            'status' => true,
+            'data' => ['lencoReference' => 'LENCO-REF-2'],
+        ], 200),
+    ]);
+
+    Customer::create(['name' => 'Old Name', 'email' => '0971943638@moneyunify.local']);
+
+    $user = User::factory()->create(['api_token' => 'token-pre']);
+    PaymentProvider::create([
+        'user_id' => $user->id,
+        'name' => 'Lenco Provider',
+        'config' => ['api_key' => 'lenco_key'],
+        'class' => LencoController::class,
+        'is_active' => true,
+    ]);
+
+    $this->withToken('token-pre')
+        ->postJson('/api/v1/payment/request', ['amount' => 10, 'account_number' => '0971943638', 'country' => 'ZM'])
+        ->assertOk();
+
+    // The resolved name should update the existing customer record.
+    $this->assertDatabaseHas('customers', [
+        'email' => '0971943638@moneyunify.local',
+        'name' => 'Blessed Mwanza',
     ]);
 });
 

@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/react';
+import logs from '@/routes/logs';
 import providers from '@/routes/providers';
-import { BookOpen, Sliders, LayoutGrid } from 'lucide-react';
+import { BookOpen, Sliders, LayoutGrid, ScrollText } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -28,12 +29,17 @@ const mainNavItems: NavItem[] = [
         href: providers.index.url(),
         icon: Sliders,
     },
+    {
+        title: 'Logs',
+        href: logs.index.url(),
+        icon: ScrollText,
+    },
 ];
 
 const footerNavItems: NavItem[] = [
     {
         title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#react',
+        href: '/docs',
         icon: BookOpen,
     },
 ];

@@ -13,6 +13,7 @@ use App\Models\PaymentProvider;
 use App\Models\Transaction;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -61,46 +62,30 @@ class LencoController extends Controller implements PaymentProviderInterface
         if (! $accountType) {
             return ApiResponse::error('Unsupported mobile operator', 400);
         }
-        // get account details
-        if ($accountType->name) {
-            // save account
-            $accountExists = CustomerAccount::where('number', $accountType->number)
-                ->where('country', $accountType->country)
-                ->first();
-            if (! $accountExists) {
-                // Create a customer first since it is required for transaction
-                $customer = Customer::create([
-                    'name' => $accountType->name,
-                    'email' => $accountType->number.'@moneyunify.local',
-                ]);
-                $customerAccount = CustomerAccount::create([
-                    'customer_id' => $customer->id,
-                    'name' => $accountType->name,
-                    'number' => $accountType->number,
-                    'country' => $accountType->country,
-                ]);
-            } else {
-                $customer = $accountExists->customer;
-                if (! $customer) {
-                    $customer = Customer::create([
-                        'name' => $accountType->name,
-                        'email' => $accountType->number.'@moneyunify.local',
-                    ]);
-                    $accountExists->customer_id = $customer->id;
-                }
-                if ($accountExists->name !== $accountType->name) {
-                    $accountExists->name = $accountType->name;
-                    $customer->update(['name' => $accountType->name]);
-                }
-                $accountExists->save();
-            }
-        } else {
-            // Fallback: if no name resolved and no account exists, we create a generic one
+        // Resolve (or create) the customer and their account idempotently so
+        // retried or repeated requests for the same number never collide on the
+        // unique customer email. Wrapped in a transaction to avoid orphans.
+        $customer = DB::transaction(function () use ($accountType) {
+            $email = $accountType->number.'@moneyunify.local';
+            $resolvedName = $accountType->name ?? 'Customer '.$accountType->number;
+
             $customer = Customer::firstOrCreate(
-                ['email' => $accountType->number.'@moneyunify.local'],
-                ['name' => $accountType->name ?? 'Customer '.$accountType->number]
+                ['email' => $email],
+                ['name' => $resolvedName],
             );
-        }
+
+            // Keep the stored name fresh when the provider resolves a real one.
+            if ($accountType->name && $customer->name !== $accountType->name) {
+                $customer->update(['name' => $accountType->name]);
+            }
+
+            CustomerAccount::updateOrCreate(
+                ['number' => $accountType->number, 'country' => $accountType->country],
+                ['customer_id' => $customer->id, 'name' => $resolvedName],
+            );
+
+            return $customer;
+        });
 
         // generate reference
         $reference = (string) Str::uuid();

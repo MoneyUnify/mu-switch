@@ -1,7 +1,9 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog"
+import { Theme } from "@radix-ui/themes"
 import { XIcon } from "lucide-react"
 import * as React from "react"
 
+import { useAppearance } from "@/hooks/use-appearance"
 import { cn } from "@/lib/utils"
 
 function Dialog({
@@ -49,6 +51,11 @@ function DialogContent({
   children,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content>) {
+  // The dialog portals to document.body, outside the root <Theme>. Re-inject
+  // the Radix Theme (display:contents so it adds no layout box) so Radix Themes
+  // components rendered inside dialogs are styled correctly across the platform.
+  const { resolvedAppearance } = useAppearance()
+
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />
@@ -60,11 +67,21 @@ function DialogContent({
         )}
         {...props}
       >
-        {children}
-        <DialogPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4">
-          <XIcon />
-          <span className="sr-only">Close</span>
-        </DialogPrimitive.Close>
+        <Theme
+          appearance={resolvedAppearance}
+          accentColor="blue"
+          grayColor="gray"
+          radius="full"
+          scaling="90%"
+          hasBackground={false}
+          style={{ display: "contents" }}
+        >
+          {children}
+          <DialogPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4">
+            <XIcon />
+            <span className="sr-only">Close</span>
+          </DialogPrimitive.Close>
+        </Theme>
       </DialogPrimitive.Content>
     </DialogPortal>
   )
@@ -100,7 +117,7 @@ function DialogTitle({
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn("text-lg leading-none font-semibold", className)}
+      className={cn("text-base leading-none font-semibold", className)}
       {...props}
     />
   )
@@ -113,7 +130,7 @@ function DialogDescription({
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"
-      className={cn("text-muted-foreground text-sm", className)}
+      className={cn("text-muted-foreground text-xs", className)}
       {...props}
     />
   )

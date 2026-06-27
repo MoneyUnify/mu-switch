@@ -1,9 +1,9 @@
 <?php
 
+use App\Models\Customer;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use App\Models\Customer;
 
 return new class extends Migration
 {
@@ -16,8 +16,8 @@ return new class extends Migration
             $table->id();
             $table->foreignIdFor(Customer::class)->nullable()->default(null)->constrained()->onDelete('cascade');
             $table->string('name');
-            $table->string('number'); //account number or identifier
-            $table->string('country')->maxLength(2); //ISO country code
+            $table->string('number'); // account number or identifier
+            $table->string('country', 2)->nullable(); // ISO country code
             $table->timestamps();
         });
     }

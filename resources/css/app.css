@@ -7,6 +7,24 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Stacked-card effect: two semi-transparent "sub" cards peeking out on every
+ * side from behind the main card, each softened with blur for a liquid, glassy
+ * depth. Theme-aware via --card / --border / --foreground.
+ */
+@utility card-stack {
+    box-shadow:
+        /* ambient soft shadow for the liquid feel */
+        0 1px 2px 0 color-mix(in oklab, var(--foreground) 8%, transparent),
+        0 6px 16px 0 color-mix(in oklab, var(--foreground) 6%, transparent),
+        /* sub-card 1 — translucent body peeking ~5px on every side + soft glow */
+        0 0 0 5px color-mix(in oklab, var(--card) 50%, transparent),
+        0 4px 16px 6px color-mix(in oklab, var(--foreground) 5%, transparent),
+        /* sub-card 2 — only slightly larger than sub-card 1, more transparent */
+        0 0 0 8px color-mix(in oklab, var(--card) 24%, transparent),
+        0 6px 16px 8px color-mix(in oklab, var(--foreground) 4%, transparent);
+}
+
 @theme {
     --font-sans:
         'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
@@ -63,12 +81,12 @@
 
 :root {
     --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
+    --foreground: oklch(0.27 0 0);
     --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
+    --card-foreground: oklch(0.27 0 0);
     --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.27 0 0);
+    --primary: oklch(0.54 0.14 255);
     --primary-foreground: oklch(0.985 0 0);
     --secondary: oklch(0.97 0 0);
     --secondary-foreground: oklch(0.205 0 0);
@@ -80,7 +98,7 @@
     --destructive-foreground: oklch(0.577 0.245 27.325);
     --border: oklch(0.922 0 0);
     --input: oklch(0.922 0 0);
-    --ring: oklch(0.87 0 0);
+    --ring: oklch(0.62 0.09 255);
     --chart-1: oklch(0.646 0.222 41.116);
     --chart-2: oklch(0.6 0.118 184.704);
     --chart-3: oklch(0.398 0.07 227.392);
@@ -88,8 +106,8 @@
     --chart-5: oklch(0.769 0.188 70.08);
     --radius: 0.625rem;
     --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
+    --sidebar-foreground: oklch(0.27 0 0);
+    --sidebar-primary: oklch(0.54 0.14 255);
     --sidebar-primary-foreground: oklch(0.985 0 0);
     --sidebar-accent: oklch(0.97 0 0);
     --sidebar-accent-foreground: oklch(0.205 0 0);
@@ -104,8 +122,8 @@
     --card-foreground: oklch(0.985 0 0);
     --popover: oklch(0.145 0 0);
     --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.985 0 0);
-    --primary-foreground: oklch(0.205 0 0);
+    --primary: oklch(0.62 0.15 255);
+    --primary-foreground: oklch(0.985 0 0);
     --secondary: oklch(0.269 0 0);
     --secondary-foreground: oklch(0.985 0 0);
     --muted: oklch(0.269 0 0);
@@ -116,7 +134,7 @@
     --destructive-foreground: oklch(0.637 0.237 25.331);
     --border: oklch(0.269 0 0);
     --input: oklch(0.269 0 0);
-    --ring: oklch(0.439 0 0);
+    --ring: oklch(0.66 0.1 255);
     --chart-1: oklch(0.488 0.243 264.376);
     --chart-2: oklch(0.696 0.17 162.48);
     --chart-3: oklch(0.769 0.188 70.08);
@@ -124,7 +142,7 @@
     --chart-5: oklch(0.645 0.246 16.439);
     --sidebar: oklch(0.205 0 0);
     --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.985 0 0);
+    --sidebar-primary: oklch(0.62 0.15 255);
     --sidebar-primary-foreground: oklch(0.985 0 0);
     --sidebar-accent: oklch(0.269 0 0);
     --sidebar-accent-foreground: oklch(0.985 0 0);
