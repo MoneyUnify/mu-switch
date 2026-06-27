@@ -13,4 +13,5 @@
 - [How the Switch Works](content/api/overview)
 - [Authentication](content/api/authentication)
 - [Request a Payment](content/api/request-payment)
+- [Verify a Payment](content/api/verify-payment)
 - [Responses & Errors](content/api/responses)

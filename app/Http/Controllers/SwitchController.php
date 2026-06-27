@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\ApiResponse;
 use App\Contracts\PaymentProviderInterface;
+use App\Jobs\SendTransactionCallback;
+use App\Models\Transaction;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -15,6 +17,8 @@ class SwitchController extends Controller
             'amount' => 'required|numeric|min:0.01',
             'account_number' => 'required|string',
             'country' => 'required|string|size:2|in:ZM,MW',
+            // Optional: where we POST the final (successful/failed) result.
+            'callback_url' => 'nullable|url',
         ]);
         $user = $request->user();
         $providers = $user ? $user->paymentProviders : collect();
@@ -92,5 +96,67 @@ class SwitchController extends Controller
         }
 
         return $lastError ?? ApiResponse::error('No provider could process the payment request', 500);
+    }
+
+    /**
+     * Verify (re-check) a transaction's status through its original provider.
+     *
+     * The switch looks up the transaction, asks the provider that processed it
+     * for the latest status, persists it, and — once the transaction settles —
+     * notifies the merchant's callback URL if one was supplied.
+     */
+    public function verifyPayment(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'transaction_id' => 'required|string',
+        ]);
+
+        $user = $request->user();
+        $providerIds = $user ? $user->paymentProviders()->pluck('id') : collect();
+
+        // Scope the lookup to the authenticated account's providers.
+        $transaction = Transaction::query()
+            ->whereIn('payment_provider_id', $providerIds)
+            ->where('transaction_id', $validated['transaction_id'])
+            ->with('paymentProvider')
+            ->first();
+
+        if (! $transaction) {
+            return ApiResponse::error('Transaction not found', 404);
+        }
+
+        $provider = $transaction->paymentProvider;
+
+        if (! $provider || ! class_exists($provider->class)) {
+            return ApiResponse::error('The provider for this transaction is no longer available', 422);
+        }
+
+        $providerInstance = app($provider->class);
+
+        if (! $providerInstance instanceof PaymentProviderInterface) {
+            return ApiResponse::error('Payment driver must implement PaymentProviderInterface', 500);
+        }
+
+        if ($configError = $providerInstance->setProvider($provider)) {
+            return $configError;
+        }
+
+        // The provider re-checks the transaction and persists its latest status.
+        $response = $providerInstance->verifyPayment($transaction);
+
+        $this->notifyCallbackIfSettled($transaction->refresh());
+
+        return $response;
+    }
+
+    /**
+     * Dispatch a one-time callback to the merchant once a transaction has
+     * settled (succeeded or failed) and a callback URL was supplied.
+     */
+    private function notifyCallbackIfSettled(Transaction $transaction): void
+    {
+        if ($transaction->isFinal() && $transaction->callback_url && ! $transaction->callback_notified_at) {
+            SendTransactionCallback::dispatch($transaction);
+        }
     }
 }

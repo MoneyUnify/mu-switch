@@ -19,6 +19,8 @@ class Transaction extends Model
         'direction',
         'is_fx',
         'fx_rate',
+        'callback_url',
+        'callback_notified_at',
     ];
 
     public function paymentProvider()
@@ -31,10 +33,19 @@ class Transaction extends Model
         return $this->belongsTo(Customer::class);
     }
 
+    /**
+     * Whether the transaction has reached a final (settled) state.
+     */
+    public function isFinal(): bool
+    {
+        return in_array($this->status, [TransactionStatus::SUCCESS, TransactionStatus::FAILED], true);
+    }
+
     protected function casts(): array
     {
         return [
             'status' => TransactionStatus::class,
+            'callback_notified_at' => 'datetime',
         ];
     }
 }

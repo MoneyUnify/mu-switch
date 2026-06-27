@@ -12,7 +12,7 @@ client can parse them uniformly.
 
 ```json
 {
-  "status": "success | error",
+  "status": "success | failed | pending | error",
   "message": "Human-readable description",
   "data": {}
 }
@@ -20,9 +20,25 @@ client can parse them uniformly.
 
 | Field | Description |
 | --- | --- |
-| `status` | `"success"` for 2xx responses, `"error"` otherwise. |
+| `status` | The outcome — one of `success`, `failed`, `pending`, or `error` (see below). |
 | `message` | A human-readable summary of the result. |
-| `data` | Result payload on success; usually an empty array on error. |
+| `data` | Result payload (object); usually an empty array on `error`. |
+
+## Top-level `status` values
+
+The top-level `status` describes the **outcome**, not merely whether the HTTP
+request worked. This is the single most important field to branch on.
+
+| `status` | HTTP | Meaning |
+| --- | --- | --- |
+| `success` | `200` | The call succeeded — a payment was initiated, or a [verified](/docs/api/verify-payment) transaction is **successful**. |
+| `failed` | `200` | Returned by [verification](/docs/api/verify-payment): the **payment itself failed** at the provider. The API call worked. |
+| `pending` | `200` | Returned by verification: the payment has **not settled yet** (awaiting the payer / provider). |
+| `error` | `4xx` / `5xx` | The **API call could not be completed** — bad auth, validation, no eligible provider, or the provider was unreachable. Never means "the payment failed". |
+
+> **Key distinction:** a *failed payment* is `status: "failed"` with HTTP `200`
+> (verification reached the provider and the payment was declined). An `error`
+> means the request itself failed. Don't treat `error` as a declined payment.
 
 ## Success
 
@@ -36,6 +52,27 @@ client can parse them uniformly.
     "transaction_id": "9b6c2f1e-2a4d-4c7e-9f3a-1b2c3d4e5f6a",
     "reference": "lenco_ref_abc123"
   }
+}
+```
+
+## Failed & pending (verification)
+
+Only the [verification endpoint](/docs/api/verify-payment) returns `failed` or
+`pending` — both with HTTP `200`, because the verification call succeeded:
+
+```json
+{
+  "status": "failed",
+  "message": "Transaction failed",
+  "data": { "status": "failed", "provider_status": "failed", "...": "..." }
+}
+```
+
+```json
+{
+  "status": "pending",
+  "message": "Transaction is still pending",
+  "data": { "status": "pending", "provider_status": "pay-offline", "...": "..." }
 }
 ```
 
@@ -71,10 +108,15 @@ Because the switch tries providers sequentially, a non-200 response means **all*
 eligible providers were exhausted (or the request was rejected before routing).
 Recommended client handling:
 
-- **`200`** — record `transaction_id` and `reference`; reconcile later.
+- **`200`** — record `transaction_id` and `reference`; reconcile via
+  [verification](/docs/api/verify-payment).
 - **`400` / `422`** — fix configuration or input; retrying unchanged won't help.
 - **`401`** — refresh or correct your [API token](/docs/api-tokens).
 - **`500`** — safe to retry after a short backoff; a provider may recover.
+
+When **verifying**, branch on the top-level `status` field instead of the HTTP
+code (which is `200` for `success`, `failed`, and `pending` alike): treat
+`success` / `failed` as final and keep polling while `pending`.
 
 > Always send the `Accept: application/json` header so error and validation
 > responses are returned as JSON.

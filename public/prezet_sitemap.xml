@@ -20,13 +20,19 @@
     </url>
     <url>
         <loc>http://localhost:8000/docs/api/request-payment</loc>
-        <lastmod>2026-06-27T12:34:12+00:00</lastmod>
+        <lastmod>2026-06-27T17:36:18+00:00</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.7</priority>
     </url>
     <url>
         <loc>http://localhost:8000/docs/api/responses</loc>
-        <lastmod>2026-06-27T12:34:12+00:00</lastmod>
+        <lastmod>2026-06-27T17:30:41+00:00</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>http://localhost:8000/docs/api/verify-payment</loc>
+        <lastmod>2026-06-27T17:25:47+00:00</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.7</priority>
     </url>
@@ -38,7 +44,7 @@
     </url>
     <url>
         <loc>http://localhost:8000/docs/installation</loc>
-        <lastmod>2026-06-27T12:34:12+00:00</lastmod>
+        <lastmod>2026-06-27T12:45:27+00:00</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.7</priority>
     </url>

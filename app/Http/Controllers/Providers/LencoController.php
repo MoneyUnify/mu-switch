@@ -99,6 +99,7 @@ class LencoController extends Controller implements PaymentProviderInterface
             'status' => TransactionStatus::PENDING,
             'direction' => 'credit',
             'provider_transaction_id' => 'temp_'.Str::random(10),
+            'callback_url' => $request->input('callback_url'),
         ]);
         $transaction->paymentProvider()->associate($this->provider);
         $transaction->save();
@@ -121,7 +122,12 @@ class LencoController extends Controller implements PaymentProviderInterface
             ]);
             $errorMessage = $response->json('message') ?? 'Lenco API payment request failed';
 
-            return ApiResponse::error($errorMessage, $response->status());
+            // A provider can decline with HTTP 200 + status:false. Never surface
+            // that as a 2xx: our standard requires errors to carry a 4xx/5xx code,
+            // and the switch relies on a non-200 code to fall back to the next provider.
+            $statusCode = $response->status() >= 400 ? $response->status() : 422;
+
+            return ApiResponse::error($errorMessage, $statusCode);
         }
 
         // Save real provider reference and update status
@@ -131,10 +137,82 @@ class LencoController extends Controller implements PaymentProviderInterface
             'provider_response' => $response->json(),
         ]);
 
+        // The collection is initiated but not yet settled — mobile money is
+        // asynchronous, so the transaction starts as `pending`. Surface that so
+        // the caller knows to verify for the final outcome.
         return ApiResponse::success('Payment request initiated successfully', [
             'transaction_id' => $transaction->transaction_id,
             'reference' => $transaction->provider_transaction_id,
+            'status' => $transaction->status->value,
         ]);
+    }
+
+    /**
+     * Verify a transaction with Lenco and persist its latest status.
+     *
+     * Lenco identifies a collection by the reference we sent it, which is our
+     * own transaction_id. See the "get collection by reference" endpoint:
+     * https://lenco-api.readme.io/v2.0/reference/get-collection-by-reference
+     */
+    public function verifyPayment(Transaction $transaction): JsonResponse
+    {
+        $response = Http::withToken($this->api_key)
+            ->acceptJson()
+            ->get($this->baseUrl.'/collections/status/'.$transaction->transaction_id);
+
+        if (! $response->successful() || ! $response->json('status')) {
+            $message = $response->json('message') ?? 'Unable to verify the transaction with Lenco';
+
+            // Verification couldn't be completed — always a 4xx/5xx, never a 2xx.
+            $statusCode = $response->status() >= 400 ? $response->status() : 502;
+
+            return ApiResponse::error($message, $statusCode);
+        }
+
+        $providerStatus = (string) $response->json('data.status');
+        $status = self::mapStatus($providerStatus);
+
+        $transaction->update([
+            'status' => $status,
+            'provider_response' => $response->json(),
+        ]);
+
+        // The envelope status mirrors the transaction's real outcome
+        // (success / failed / pending) so it is never confused with "the API
+        // call worked". The HTTP code remains 200 because verification succeeded.
+        return ApiResponse::status($status->value, self::statusMessage($status), [
+            'transaction_id' => $transaction->transaction_id,
+            'reference' => $transaction->provider_transaction_id,
+            'status' => $status->value,
+            'provider_status' => $providerStatus,
+            'amount' => (float) $transaction->amount,
+            'currency' => $transaction->currency,
+        ]);
+    }
+
+    /**
+     * Map a Lenco collection status onto our internal TransactionStatus.
+     * Lenco statuses: pending | successful | failed | pay-offline | 3ds-auth-required.
+     */
+    private static function mapStatus(string $providerStatus): TransactionStatus
+    {
+        return match ($providerStatus) {
+            'successful' => TransactionStatus::SUCCESS,
+            'failed' => TransactionStatus::FAILED,
+            default => TransactionStatus::PENDING,
+        };
+    }
+
+    /**
+     * A human-readable message that matches the transaction outcome.
+     */
+    private static function statusMessage(TransactionStatus $status): string
+    {
+        return match ($status) {
+            TransactionStatus::SUCCESS => 'Transaction completed successfully',
+            TransactionStatus::FAILED => 'Transaction failed',
+            default => 'Transaction is still pending',
+        };
     }
 
     private function getTypeAccount(string $accountNumber): ?TypeAccountNumber
