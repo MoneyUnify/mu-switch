@@ -11,15 +11,55 @@ infrastructure you control.
 
 ## Requirements
 
-| Dependency | Version |
-| --- | --- |
-| PHP | 8.3 or newer (with `dom` and `gd` extensions) |
-| Composer | 2.x |
-| Node.js | 20 or newer |
-| Database | SQLite (default), MySQL, or PostgreSQL |
+| Dependency | Version | Download |
+| --- | --- | --- |
+| PHP | 8.3 or newer (with `dom` and `gd` extensions) | [php.net/downloads](https://www.php.net/downloads.php) |
+| Composer | 2.x | [getcomposer.org/download](https://getcomposer.org/download/) |
+| Node.js | 20 or newer | [nodejs.org/download](https://nodejs.org/en/download) |
+| Database | SQLite (default), MySQL, or PostgreSQL | [SQLite](https://www.sqlite.org/download.html) · [MySQL](https://dev.mysql.com/downloads/) · [PostgreSQL](https://www.postgresql.org/download/) |
 
 > The default configuration uses SQLite, so no separate database server is
 > required to get started.
+
+### Installing PHP and its extensions
+
+You can grab the PHP source or a Windows build from
+[php.net/downloads](https://www.php.net/downloads.php), but on macOS and Linux
+it's easiest to install PHP (and the `dom` + `gd` extensions this app needs)
+through your package manager.
+
+**macOS** — using [Homebrew](https://brew.sh). The Homebrew PHP formula already
+bundles the `dom` and `gd` extensions, so a single install is enough:
+
+```bash
+brew install php       # PHP 8.3+ with dom, gd, mbstring, curl, sqlite3, …
+brew install composer  # Composer 2.x
+brew install node      # Node.js 20+
+```
+
+**Linux** — Debian / Ubuntu (`apt`). Extensions are shipped as separate
+packages, so install them alongside the PHP CLI:
+
+```bash
+sudo apt update
+sudo apt install -y php8.3-cli php8.3-dom php8.3-gd \
+    php8.3-mbstring php8.3-curl php8.3-xml php8.3-sqlite3
+```
+
+> On Fedora / RHEL the equivalent is
+> `sudo dnf install php-cli php-xml php-gd php-mbstring php-pdo`
+> (the `dom` extension is provided by `php-xml`).
+
+After installing, confirm the version and that the required extensions are
+loaded:
+
+```bash
+php -v                  # should report 8.3 or newer
+php -m | grep -E 'dom|gd'   # both "dom" and "gd" should be listed
+```
+
+If an extension is missing, install its package (e.g. `php8.3-gd`) and re-run
+the check — no PHP reconfiguration is needed.
 
 ## Quick start
 
