@@ -14,6 +14,7 @@ class Transaction extends Model
         'customer_id',
         'amount',
         'currency',
+        'country',
         'status',
         'provider_response',
         'direction',

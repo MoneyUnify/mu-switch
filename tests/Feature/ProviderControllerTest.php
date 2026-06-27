@@ -35,9 +35,12 @@ test('user can view their own providers', function () {
             ->component('providers/index')
             ->has('providers', 1)
             ->where('providers.0.name', 'User Provider')
-            ->has('availableDrivers')
-            ->where('availableDrivers.0.name', 'Lenco')
-            ->where('availableDrivers.0.class', 'App\\Http\\Controllers\\Providers\\LencoController')
+            // Drivers are auto-discovered; both shipped drivers are exposed with their config fields.
+            ->where('availableDrivers', fn ($drivers) => collect($drivers)->pluck('name')->contains('Lenco')
+                && collect($drivers)->pluck('name')->contains('Airtel Money')
+                && collect($drivers)->firstWhere('name', 'Lenco')['config_fields'][0]['key'] === 'api_key'
+                && collect($drivers)->firstWhere('name', 'Airtel Money')['config_fields'][0]['key'] === 'client_id'
+                && collect($drivers)->firstWhere('name', 'Lenco')['default_logo'] !== null)
         );
 });
 
@@ -48,8 +51,8 @@ test('user can create a payment provider', function () {
         ->post(route('providers.store'), [
             'name' => 'New Provider',
             'class' => 'App\\Http\\Controllers\\Providers\\LencoController',
-            'api_key' => 'secret_key',
-            'supported_countries' => 'ZM, MW',
+            'config' => ['api_key' => 'secret_key'],
+            'supported_countries' => ['ZM', 'MW'],
             'is_active' => 1,
             'logo_url' => 'https://example.com/logo.png',
         ]);
@@ -85,8 +88,8 @@ test('user can update their own payment provider', function () {
         ->put(route('providers.update', $provider), [
             'name' => 'Updated Name',
             'class' => 'NewClass',
-            'api_key' => 'new_key',
-            'supported_countries' => 'ZM, MW',
+            'config' => ['api_key' => 'new_key'],
+            'supported_countries' => ['ZM', 'MW'],
             'is_active' => 1,
         ]);
 

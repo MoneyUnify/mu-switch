@@ -17,7 +17,7 @@ class ApiLogController extends Controller
      *
      * @var list<string>
      */
-    private const SEARCH_FIELDS = ['all', 'path', 'ip', 'method', 'status', 'exception'];
+    private const SEARCH_FIELDS = ['all', 'path', 'ip', 'method', 'status', 'payload', 'exception'];
 
     /**
      * Selectable date ranges.
@@ -25,6 +25,13 @@ class ApiLogController extends Controller
      * @var list<string>
      */
     private const RANGES = ['today', 'yesterday', 'month', 'custom'];
+
+    /**
+     * Selectable page sizes for the records table (first entry is the default).
+     *
+     * @var list<int>
+     */
+    private const PER_PAGE_OPTIONS = [5, 10, 15, 30, 50, 100];
 
     /**
      * Display a paginated, searchable, filterable list of the user's API logs
@@ -45,6 +52,9 @@ class ApiLogController extends Controller
         $status = $request->string('status')->toString();
         $status = in_array($status, ['success', 'client', 'server'], true) ? $status : null;
 
+        $perPage = (int) $request->integer('perPage');
+        $perPage = in_array($perPage, self::PER_PAGE_OPTIONS, true) ? $perPage : self::PER_PAGE_OPTIONS[0];
+
         // Base query: the user's logs within the selected window, matching search.
         $scoped = fn (): Builder => ApiLog::query()
             ->where('user_id', $userId)
@@ -52,7 +62,7 @@ class ApiLogController extends Controller
             ->tap(fn (Builder $q) => $this->applySearch($q, $field, $search));
 
         return Inertia::render('logs/index', [
-            'logs' => $this->paginatedLogs($scoped(), $status),
+            'logs' => $this->paginatedLogs($scoped(), $status, $perPage),
             'stats' => $this->stats($scoped()),
             'chart' => $this->chartSeries($scoped(), $from, $to, $grain),
             'filters' => [
@@ -62,8 +72,10 @@ class ApiLogController extends Controller
                 'field' => $field,
                 'from' => $from->toDateString(),
                 'to' => $to->toDateString(),
+                'perPage' => $perPage,
             ],
             'fieldOptions' => self::SEARCH_FIELDS,
+            'perPageOptions' => self::PER_PAGE_OPTIONS,
         ]);
     }
 
@@ -131,6 +143,10 @@ class ApiLogController extends Controller
             'ip' => $query->where('ip_address', 'like', $like),
             'method' => $query->where('method', strtoupper($search)),
             'status' => $query->where('response_status', (int) $search),
+            'payload' => $query->where(fn (Builder $q) => $q
+                ->where('request_body', 'like', $like)
+                ->orWhere('request_headers', 'like', $like)
+                ->orWhere('response_body', 'like', $like)),
             'exception' => $query->where(fn (Builder $q) => $q
                 ->where('exception_class', 'like', $like)
                 ->orWhere('exception_message', 'like', $like)),
@@ -139,6 +155,9 @@ class ApiLogController extends Controller
                 ->orWhere('ip_address', 'like', $like)
                 ->orWhere('method', 'like', $like)
                 ->orWhere('exception_message', 'like', $like)
+                ->orWhere('request_body', 'like', $like)
+                ->orWhere('request_headers', 'like', $like)
+                ->orWhere('response_body', 'like', $like)
                 ->when(is_numeric($search), fn (Builder $q2) => $q2->orWhere('response_status', (int) $search))),
         };
     }
@@ -157,16 +176,17 @@ class ApiLogController extends Controller
     }
 
     /**
-     * Paginate the logs, optionally narrowed to a status class.
+     * Paginate the logs at the requested page size, optionally narrowed to a
+     * status class.
      */
-    private function paginatedLogs(Builder $query, ?string $status): LengthAwarePaginator
+    private function paginatedLogs(Builder $query, ?string $status, int $perPage): LengthAwarePaginator
     {
         return $query
             ->when($status === 'success', fn (Builder $q) => $q->whereBetween('response_status', [200, 299]))
             ->when($status === 'client', fn (Builder $q) => $q->whereBetween('response_status', [400, 499]))
             ->when($status === 'server', fn (Builder $q) => $q->whereBetween('response_status', [500, 599]))
             ->latest('id')
-            ->paginate(15)
+            ->paginate($perPage)
             ->withQueryString()
             ->through(fn (ApiLog $log): array => [
                 'id' => $log->id,

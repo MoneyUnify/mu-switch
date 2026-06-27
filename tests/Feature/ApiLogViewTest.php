@@ -86,6 +86,34 @@ test('logs can be searched by IP address', function () {
         );
 });
 
+test('logs can be searched by request body, headers and response body', function () {
+    $user = User::factory()->create();
+    makeLog($user->id, 200, ['request_body' => ['account_number' => '0977000111']]);
+    makeLog($user->id, 200, ['response_body' => json_encode(['reference' => 'REF-ABCDEF'])]);
+    makeLog($user->id, 200, ['request_headers' => ['X-Trace' => ['trace-xyz']]]);
+    makeLog($user->id, 200, ['request_body' => ['account_number' => '0966999888']]);
+
+    // Dedicated payload field: request body.
+    $this->actingAs($user)
+        ->get(route('logs.index', ['field' => 'payload', 'q' => '0977000111']))
+        ->assertInertia(fn (Assert $page) => $page->has('logs.data', 1)->where('filters.field', 'payload'));
+
+    // Dedicated payload field: response body.
+    $this->actingAs($user)
+        ->get(route('logs.index', ['field' => 'payload', 'q' => 'REF-ABCDEF']))
+        ->assertInertia(fn (Assert $page) => $page->has('logs.data', 1));
+
+    // Dedicated payload field: request headers.
+    $this->actingAs($user)
+        ->get(route('logs.index', ['field' => 'payload', 'q' => 'trace-xyz']))
+        ->assertInertia(fn (Assert $page) => $page->has('logs.data', 1));
+
+    // The default "all" search also reaches into the payload.
+    $this->actingAs($user)
+        ->get(route('logs.index', ['q' => 'REF-ABCDEF']))
+        ->assertInertia(fn (Assert $page) => $page->has('logs.data', 1));
+});
+
 test('logs can be filtered to today versus yesterday', function () {
     $user = User::factory()->create();
     makeLog($user->id, 200); // created now (today)
@@ -136,7 +164,7 @@ test('the logs view exposes a status-code chart series', function () {
         );
 });
 
-test('logs are paginated at 15 per page', function () {
+test('logs are paginated at 5 per page by default', function () {
     $user = User::factory()->create();
     foreach (range(1, 20) as $i) {
         makeLog($user->id, 200);
@@ -145,8 +173,40 @@ test('logs are paginated at 15 per page', function () {
     $this->actingAs($user)
         ->get(route('logs.index'))
         ->assertInertia(fn (Assert $page) => $page
-            ->has('logs.data', 15)
+            ->has('logs.data', 5)
             ->where('logs.total', 20)
+            ->where('logs.last_page', 4)
+            ->where('filters.perPage', 5)
+            ->where('perPageOptions', [5, 10, 15, 30, 50, 100])
+        );
+});
+
+test('the page size can be changed via the perPage filter', function () {
+    $user = User::factory()->create();
+    foreach (range(1, 60) as $i) {
+        makeLog($user->id, 200);
+    }
+
+    $this->actingAs($user)
+        ->get(route('logs.index', ['perPage' => 50]))
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('logs.data', 50)
+            ->where('logs.total', 60)
             ->where('logs.last_page', 2)
+            ->where('filters.perPage', 50)
+        );
+});
+
+test('an unsupported perPage value falls back to the default page size', function () {
+    $user = User::factory()->create();
+    foreach (range(1, 20) as $i) {
+        makeLog($user->id, 200);
+    }
+
+    $this->actingAs($user)
+        ->get(route('logs.index', ['perPage' => 999]))
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('logs.data', 5)
+            ->where('filters.perPage', 5)
         );
 });

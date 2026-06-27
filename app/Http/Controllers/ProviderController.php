@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Contracts\PaymentProviderInterface;
 use App\Models\PaymentProvider;
+use App\Support\Market;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -28,19 +31,29 @@ class ProviderController extends Controller
                         $name = substr($name, 0, -10);
                     }
 
-                    $defaultCountries = defined($className.'::DEFAULT_COUNTRIES') ? $className::DEFAULT_COUNTRIES : 'ZM,MW';
+                    $supported = $this->supportedCountriesFor($className);
+                    $defaults = defined($className.'::DEFAULT_COUNTRIES')
+                        ? array_map('trim', explode(',', $className::DEFAULT_COUNTRIES))
+                        : $supported;
 
                     $drivers[] = [
                         'name' => $name,
                         'class' => $className,
-                        'default_countries' => $defaultCountries,
+                        // The markets this driver can serve, with name + currency, for the country checkboxes.
+                        'supported_country_options' => Market::options($supported),
+                        // Pre-ticked markets when adding the provider.
+                        'default_countries' => array_values(array_intersect($defaults, $supported)),
+                        // Default (hard-coded) logo for this driver, editable in the dialog.
+                        'default_logo' => defined($className.'::DEFAULT_LOGO') ? $className::DEFAULT_LOGO : null,
+                        // The credential inputs the dashboard should render for this driver.
+                        'config_fields' => $this->configFieldsFor($className),
                     ];
                 }
             }
         }
 
         return Inertia::render('providers/index', [
-            'providers' => $request->user()->paymentProviders()->get(),
+            'providers' => $this->providersForDisplay($request->user()),
             'availableDrivers' => $drivers,
         ]);
     }
@@ -50,22 +63,31 @@ class ProviderController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
+        $fields = $this->configFieldsFor((string) $request->input('class'));
+
+        $supported = $this->supportedCountriesFor((string) $request->input('class'));
+
+        $rules = [
             'name' => 'required|string|unique:payment_providers,name',
             'class' => 'required|string',
-            'api_key' => 'required|string',
-            'supported_countries' => 'required|string',
+            'supported_countries' => 'required|array|min:1',
+            'supported_countries.*' => ['string', Rule::in($supported)],
             'is_active' => 'required|boolean',
             'logo_url' => 'nullable|string',
-        ]);
+        ];
+        foreach ($fields as $field) {
+            $rules['config.'.$field['key']] = 'required|'.($field['rules'] ?? 'string');
+        }
+
+        $validated = $request->validate($rules);
+
+        $config = $validated['config'];
+        $config['supported_countries'] = array_values($validated['supported_countries']);
 
         $request->user()->paymentProviders()->create([
             'name' => $validated['name'],
             'class' => $validated['class'],
-            'config' => [
-                'api_key' => $validated['api_key'],
-                'supported_countries' => array_map('trim', explode(',', $validated['supported_countries'])),
-            ],
+            'config' => $config,
             'is_active' => $validated['is_active'],
             'logo_url' => $validated['logo_url'] ?? null,
         ]);
@@ -82,26 +104,34 @@ class ProviderController extends Controller
             abort(403);
         }
 
-        $validated = $request->validate([
+        $fields = $this->configFieldsFor((string) $request->input('class'));
+        $supported = $this->supportedCountriesFor((string) $request->input('class'));
+
+        $rules = [
             'name' => 'required|string|unique:payment_providers,name,'.$provider->id,
             'class' => 'required|string',
-            'api_key' => 'nullable|string',
-            'supported_countries' => 'required|string',
+            'supported_countries' => 'required|array|min:1',
+            'supported_countries.*' => ['string', Rule::in($supported)],
             'is_active' => 'required|boolean',
             'logo_url' => 'nullable|string',
-        ]);
-
-        $config = $provider->config;
-        if (is_string($config)) {
-            $config = json_decode($config, true);
-        }
-        $config = $config ?? [];
-
-        if (! empty($validated['api_key'])) {
-            $config['api_key'] = $validated['api_key'];
+        ];
+        foreach ($fields as $field) {
+            // Credentials are optional on update — leave blank to keep the current value.
+            $rules['config.'.$field['key']] = 'nullable|'.($field['rules'] ?? 'string');
         }
 
-        $config['supported_countries'] = array_map('trim', explode(',', $validated['supported_countries']));
+        $validated = $request->validate($rules);
+
+        $config = is_string($provider->config) ? json_decode($provider->config, true) : ($provider->config ?? []);
+
+        foreach ($fields as $field) {
+            $value = $validated['config'][$field['key']] ?? null;
+            if (! empty($value)) {
+                $config[$field['key']] = $value;
+            }
+        }
+
+        $config['supported_countries'] = array_values($validated['supported_countries']);
 
         $provider->update([
             'name' => $validated['name'],
@@ -112,6 +142,66 @@ class ProviderController extends Controller
         ]);
 
         return redirect()->route('providers.index');
+    }
+
+    /**
+     * The credential fields a driver requires, defaulting to a single API key.
+     *
+     * @return list<array{key: string, label: string, type: string}>
+     */
+    private function configFieldsFor(string $className): array
+    {
+        if ($className !== '' && defined($className.'::CONFIG_FIELDS')) {
+            return $className::CONFIG_FIELDS;
+        }
+
+        return [['key' => 'api_key', 'label' => 'API Key / Token', 'type' => 'password']];
+    }
+
+    /**
+     * The markets a driver can serve, from its SUPPORTED_COUNTRIES (falling back
+     * to DEFAULT_COUNTRIES, then the platform's known markets).
+     *
+     * @return list<string>
+     */
+    private function supportedCountriesFor(string $className): array
+    {
+        if ($className !== '' && defined($className.'::SUPPORTED_COUNTRIES')) {
+            return $className::SUPPORTED_COUNTRIES;
+        }
+
+        if ($className !== '' && defined($className.'::DEFAULT_COUNTRIES')) {
+            return array_map('trim', explode(',', $className::DEFAULT_COUNTRIES));
+        }
+
+        return Market::codes();
+    }
+
+    /**
+     * The user's providers with credential secrets stripped from `config`
+     * (only the non-sensitive `supported_countries` is sent to the browser).
+     *
+     * @return Collection<int, PaymentProvider>
+     */
+    private function providersForDisplay($user)
+    {
+        return $user->paymentProviders()->get()->map(function (PaymentProvider $provider): PaymentProvider {
+            $config = is_string($provider->config) ? json_decode($provider->config, true) : ($provider->config ?? []);
+
+            // Keep non-secret config (so the edit form can pre-fill it) but never
+            // send password-type credentials to the browser.
+            $safe = ['supported_countries' => $config['supported_countries'] ?? []];
+
+            foreach ($this->configFieldsFor($provider->class) as $field) {
+                if (($field['type'] ?? '') !== 'password') {
+                    $safe[$field['key']] = $config[$field['key']] ?? null;
+                }
+            }
+
+            $provider->setAttribute('config', $safe);
+
+            return $provider;
+        });
     }
 
     /**

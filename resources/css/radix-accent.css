@@ -38,6 +38,16 @@
     --blue-track: #2d6fbe;
 }
 
+/*
+ * Radix Themes portals popovers/hovercards/tooltips through a positioned wrapper
+ * that carries no z-index, so inside our shadcn dialogs (z-50) they render
+ * *behind* the modal. Lift the wrapper above modal layers everywhere.
+ */
+[data-radix-popper-content-wrapper] {
+    z-index: 60 !important;
+    pointer-events: auto;
+}
+
 @supports (color: color(display-p3 1 1 1)) {
     @media (color-gamut: p3) {
         :root,

@@ -18,8 +18,8 @@ Providers are managed from the **Providers** page in the dashboard
 | --- | --- |
 | **Name** | A unique, human-friendly label (e.g. `Lenco Production`). |
 | **Driver** | The implementation class that talks to the gateway's API. Drivers are auto-discovered from `app/Http/Controllers/Providers`. |
-| **API Key** | The secret credential issued by the gateway. Stored in the provider's `config`. |
-| **Supported Countries** | A comma-separated list of ISO country codes (e.g. `ZM,MW`) the provider can serve. |
+| **Credentials** | Driver-specific secret(s), stored in the provider's `config`. Each driver declares which fields it needs — **Lenco** asks for an API Key, **Airtel Money** asks for a Client ID and Client Secret. The dashboard renders the right inputs for the driver you pick. |
+| **Supported Countries** | Tick the markets this provider should serve. Only the countries the chosen driver supports are shown; each provider's **currency** and any market-specific routing (e.g. MTN's target environment) are derived automatically from the country. |
 | **Active** | Whether the provider participates in routing. Inactive providers are skipped. |
 | **Logo URL** | Optional logo shown in the dashboard. |
 
@@ -53,6 +53,58 @@ collections in Zambia (`ZM`) and Malawi (`MW`). It:
 To enable it, add a provider in the dashboard, choose the **Lenco** driver, paste
 your Lenco API key, and set the supported countries to `ZM,MW`.
 
+## Built-in driver: Airtel Money
+
+The platform also ships an **Airtel Money** driver (`AirtelController`) for
+collections across Airtel Africa's footprint. Airtel's Open API uses OAuth2
+**client-credentials**, so instead of a single API key you provide:
+
+| Credential | Description |
+| --- | --- |
+| **Client ID** | Your Airtel Open API consumer key. |
+| **Client Secret** | Your Airtel Open API consumer secret. |
+
+The driver handles the rest internally — it exchanges the Client ID and Secret
+for a short-lived **bearer access token** (cached until it nears expiry), then
+calls Airtel's collection and status endpoints with it. The currency and country
+headers are derived from the request country, so one provider covers every market
+you tick.
+
+Airtel Money is available across Airtel Africa's **14 markets**: Nigeria, Kenya,
+Tanzania, Uganda, Rwanda, Zambia, Malawi, DR Congo, Congo-Brazzaville, Gabon,
+Chad, Niger, Madagascar, and Seychelles.
+
+To enable it, add a provider in the dashboard, choose the **Airtel Money**
+driver, paste your Client ID and Client Secret, and tick the markets you serve.
+
+## Built-in driver: MTN MoMo
+
+The platform also ships an **MTN MoMo** driver (`MtnController`) for MoMo
+Collections (request-to-pay). MTN authenticates in two layers, so you provide
+just your **production** credentials:
+
+| Credential | Description |
+| --- | --- |
+| **Collections Subscription Key** | The `Ocp-Apim-Subscription-Key` for your Collections product. |
+| **API User ID** | The API User (UUID) created in the MoMo portal. |
+| **API Key** | The API Key generated for that API User. |
+
+The driver exchanges the API User + API Key (via Basic auth) for a short-lived
+**bearer access token** (cached until it nears expiry) and uses it for the
+collection and status calls.
+
+You don't configure a target environment or currency — the driver derives MTN's
+`X-Target-Environment`, the currency, and the international MSISDN format from the
+request's **country** (e.g. `ZM → mtnzambia` / `ZMW`, `GH → mtnghana` / `GHS`).
+So one MTN provider works across every MTN MoMo market you tick: Zambia, Uganda,
+Ghana, Côte d'Ivoire, Cameroon, Rwanda, Benin, Guinea, Guinea-Bissau, Liberia,
+Congo-Brazzaville, Nigeria, South Africa, Eswatini, and South Sudan.
+
+Market data (name, currency, calling code) lives centrally in
+`App\Support\Market`; MTN's per-country target environments live in the driver's
+`TARGET_ENVIRONMENTS` map. To enable it, add a provider in the dashboard, choose
+the **MTN MoMo** driver, paste the three credentials above, and tick the markets.
+
 ## Adding your own driver
 
 Drivers are plain classes in `app/Http/Controllers/Providers` that implement
@@ -64,15 +116,28 @@ interface PaymentProviderInterface
     public function requestPayment(Request $request): JsonResponse;
 
     public function setProvider(PaymentProvider $provider): ?JsonResponse;
+
+    public function verifyPayment(Transaction $transaction): JsonResponse;
 }
 ```
 
-Optionally expose two constants the dashboard uses for discovery and defaults:
+Optionally expose constants the dashboard uses for discovery, defaults, and the
+credential inputs to render:
 
 ```php
 public const PROVIDER_NAME = 'YourGateway';
 public const DEFAULT_COUNTRIES = 'ZM,MW';
+
+// Which credential inputs the dashboard collects for this driver.
+public const CONFIG_FIELDS = [
+    ['key' => 'client_id', 'label' => 'Client ID', 'type' => 'text'],
+    ['key' => 'client_secret', 'label' => 'Client Secret', 'type' => 'password'],
+];
 ```
+
+Keep any token/secret handling **private** inside the driver (see the Airtel
+driver's access-token method) so operators only ever supply the credentials
+declared in `CONFIG_FIELDS`.
 
 Any class in that directory implementing the interface is automatically offered
 as a selectable driver when you add a provider — no route or registration

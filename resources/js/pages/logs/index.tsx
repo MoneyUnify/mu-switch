@@ -1,5 +1,5 @@
 import { Head, Link, router, usePoll } from '@inertiajs/react';
-import { AlertTriangle, Search, ScrollText } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight, Search, ScrollText } from 'lucide-react';
 import { useState } from 'react';
 import { Button, Select, TextField } from '@radix-ui/themes';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +37,8 @@ interface Paginated<T> {
     from: number | null;
     to: number | null;
     total: number;
+    prev_page_url: string | null;
+    next_page_url: string | null;
     links: { url: string | null; label: string; active: boolean }[];
 }
 
@@ -47,6 +49,7 @@ interface Filters {
     field: string;
     from: string;
     to: string;
+    perPage: number;
 }
 
 interface LogsProps {
@@ -55,6 +58,7 @@ interface LogsProps {
     chart: { points: StatusPoint[]; grain: string };
     filters: Filters;
     fieldOptions: string[];
+    perPageOptions: number[];
 }
 
 const RANGE_LABELS: Record<string, string> = {
@@ -70,6 +74,7 @@ const FIELD_LABELS: Record<string, string> = {
     ip: 'IP address',
     method: 'Method',
     status: 'Status code',
+    payload: 'Request / Response',
     exception: 'Exception',
 };
 
@@ -116,6 +121,35 @@ function SummaryCard({ label, value, href, active, accent }: { label: string; va
     );
 }
 
+function PrevNext({ prevUrl, nextUrl }: { prevUrl: string | null; nextUrl: string | null }) {
+    const base = 'inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors';
+    const enabled = 'border-sidebar-border/70 text-neutral-600 hover:bg-neutral-100 dark:border-sidebar-border dark:text-neutral-300 dark:hover:bg-neutral-800';
+    const disabled = 'cursor-not-allowed border-sidebar-border/40 text-neutral-300 dark:border-sidebar-border/60 dark:text-neutral-700';
+
+    return (
+        <div className="flex items-center gap-1.5">
+            {prevUrl ? (
+                <Link href={prevUrl} preserveScroll preserveState className={cn(base, enabled)}>
+                    <ChevronLeft className="h-3.5 w-3.5" /> Previous
+                </Link>
+            ) : (
+                <span className={cn(base, disabled)}>
+                    <ChevronLeft className="h-3.5 w-3.5" /> Previous
+                </span>
+            )}
+            {nextUrl ? (
+                <Link href={nextUrl} preserveScroll preserveState className={cn(base, enabled)}>
+                    Next <ChevronRight className="h-3.5 w-3.5" />
+                </Link>
+            ) : (
+                <span className={cn(base, disabled)}>
+                    Next <ChevronRight className="h-3.5 w-3.5" />
+                </span>
+            )}
+        </div>
+    );
+}
+
 function prettyJson(value: string): string {
     try {
         return JSON.stringify(JSON.parse(value), null, 2);
@@ -135,7 +169,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     );
 }
 
-export default function Index({ logs: page, stats, chart, filters, fieldOptions }: LogsProps) {
+export default function Index({ logs: page, stats, chart, filters, fieldOptions, perPageOptions }: LogsProps) {
     const [selected, setSelected] = useState<LogRow | null>(null);
     const [q, setQ] = useState(filters.q ?? '');
     const [field, setField] = useState(filters.field);
@@ -153,6 +187,7 @@ export default function Index({ logs: page, stats, chart, filters, fieldOptions 
         field: filters.field !== 'all' ? filters.field : undefined,
         from: filters.range === 'custom' ? filters.from : undefined,
         to: filters.range === 'custom' ? filters.to : undefined,
+        perPage: filters.perPage !== perPageOptions[0] ? String(filters.perPage) : undefined,
     };
 
     const urlWith = (overrides: Record<string, string | undefined>) => {
@@ -225,6 +260,17 @@ export default function Index({ logs: page, stats, chart, filters, fieldOptions 
                                 </div>
                             )}
                         </div>
+
+                        {page.total > 0 && (
+                            <div className="flex items-center gap-3 text-xs text-neutral-500 dark:text-neutral-400">
+                                <span className="hidden whitespace-nowrap lg:inline">
+                                    Showing <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">{page.from ?? 0}</span>–
+                                    <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">{page.to ?? 0}</span> of{' '}
+                                    <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">{page.total.toLocaleString()}</span>
+                                </span>
+                                <PrevNext prevUrl={page.prev_page_url} nextUrl={page.next_page_url} />
+                            </div>
+                        )}
 
                         <form onSubmit={submitSearch} className="flex items-center gap-2">
                             <Select.Root value={field} onValueChange={setField}>
@@ -306,35 +352,60 @@ export default function Index({ logs: page, stats, chart, filters, fieldOptions 
                     )}
 
                     {/* Pagination */}
-                    {page.last_page > 1 && (
-                        <div className="flex items-center justify-between border-t border-sidebar-border/50 px-5 py-3 text-sm dark:border-sidebar-border/70">
-                            <span className="text-neutral-500 dark:text-neutral-400">
-                                Showing {page.from ?? 0}–{page.to ?? 0} of {page.total.toLocaleString()}
-                            </span>
-                            <div className="flex flex-wrap items-center gap-1">
-                                {page.links.map((link, i) =>
-                                    link.url ? (
-                                        <Link
-                                            key={i}
-                                            href={link.url}
-                                            preserveScroll
-                                            className={cn(
-                                                'min-w-8 rounded-md px-2.5 py-1 text-center text-xs transition-colors',
-                                                link.active
-                                                    ? 'bg-primary text-primary-foreground'
-                                                    : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
-                                            )}
-                                            dangerouslySetInnerHTML={{ __html: link.label }}
-                                        />
-                                    ) : (
-                                        <span
-                                            key={i}
-                                            className="min-w-8 px-2.5 py-1 text-center text-xs text-neutral-300 dark:text-neutral-700"
-                                            dangerouslySetInnerHTML={{ __html: link.label }}
-                                        />
-                                    ),
-                                )}
+                    {page.total > 0 && (
+                        <div className="flex flex-col gap-3 border-t border-sidebar-border/50 px-5 py-3 text-sm sm:flex-row sm:items-center sm:justify-between dark:border-sidebar-border/70">
+                            <div className="flex items-center gap-3 text-neutral-500 dark:text-neutral-400">
+                                <span>
+                                    Showing <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">{page.from ?? 0}</span>–
+                                    <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">{page.to ?? 0}</span> of{' '}
+                                    <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">{page.total.toLocaleString()}</span>
+                                </span>
+                                <span className="flex items-center gap-1.5">
+                                    <span className="text-xs">Per page</span>
+                                    <Select.Root value={String(filters.perPage)} onValueChange={(value) => visit({ perPage: value })}>
+                                        <Select.Trigger variant="surface" />
+                                        <Select.Content>
+                                            {perPageOptions.map((option) => (
+                                                <Select.Item key={option} value={String(option)}>
+                                                    {option}
+                                                </Select.Item>
+                                            ))}
+                                        </Select.Content>
+                                    </Select.Root>
+                                </span>
                             </div>
+
+                            {page.last_page > 1 && (
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                    {/* Numbered pages only — Laravel's first/last links are the prev/next arrows, which PrevNext already renders. */}
+                                    <div className="flex flex-wrap items-center gap-1">
+                                        {page.links.slice(1, -1).map((link, i) =>
+                                            link.url ? (
+                                                <Link
+                                                    key={i}
+                                                    href={link.url}
+                                                    preserveScroll
+                                                    preserveState
+                                                    className={cn(
+                                                        'min-w-8 rounded-md px-2.5 py-1 text-center text-xs transition-colors',
+                                                        link.active
+                                                            ? 'bg-primary text-primary-foreground'
+                                                            : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
+                                                    )}
+                                                    dangerouslySetInnerHTML={{ __html: link.label }}
+                                                />
+                                            ) : (
+                                                <span
+                                                    key={i}
+                                                    className="min-w-8 px-2.5 py-1 text-center text-xs text-neutral-300 dark:text-neutral-700"
+                                                    dangerouslySetInnerHTML={{ __html: link.label }}
+                                                />
+                                            ),
+                                        )}
+                                    </div>
+                                    <PrevNext prevUrl={page.prev_page_url} nextUrl={page.next_page_url} />
+                                </div>
+                            )}
                         </div>
                     )}
                 </Card>

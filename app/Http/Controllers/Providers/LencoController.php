@@ -11,6 +11,7 @@ use App\Models\Customer;
 use App\Models\CustomerAccount;
 use App\Models\PaymentProvider;
 use App\Models\Transaction;
+use App\Support\Market;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,7 +22,24 @@ class LencoController extends Controller implements PaymentProviderInterface
 {
     public const PROVIDER_NAME = 'Lenco';
 
+    /**
+     * Markets Lenco can serve (selectable in the dashboard).
+     */
+    public const SUPPORTED_COUNTRIES = ['ZM', 'MW'];
+
     public const DEFAULT_COUNTRIES = 'ZM,MW';
+
+    /**
+     * Default logo shown for this driver (editable in the provider dialog).
+     */
+    public const DEFAULT_LOGO = '/lenco.png';
+
+    /**
+     * The credential fields the dashboard should collect for this driver.
+     */
+    public const CONFIG_FIELDS = [
+        ['key' => 'api_key', 'label' => 'API Key / Token', 'type' => 'password'],
+    ];
 
     public string $api_key {
         set(string $value) => trim($value);
@@ -95,7 +113,8 @@ class LencoController extends Controller implements PaymentProviderInterface
             'transaction_id' => $reference,
             'customer_id' => $customer->id,
             'amount' => $request['amount'],
-            'currency' => $accountType->country === 'MW' ? 'MWK' : 'ZMW',
+            'currency' => Market::currency($accountType->country),
+            'country' => $accountType->country,
             'status' => TransactionStatus::PENDING,
             'direction' => 'credit',
             'provider_transaction_id' => 'temp_'.Str::random(10),

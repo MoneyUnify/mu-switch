@@ -2,7 +2,7 @@ import { Head, useForm } from '@inertiajs/react';
 import { Plus, Settings, Trash2, CheckCircle2, XCircle, Globe, Key, FileCode } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Button } from '@radix-ui/themes';
+import { Button, HoverCard } from '@radix-ui/themes';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,23 +10,75 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import providersRoute from '@/routes/providers';
+import { cn } from '@/lib/utils';
 
 interface PaymentProvider {
     id: number;
     name: string;
     class: string;
     config: {
-        api_key?: string;
         supported_countries?: string | string[];
+        [key: string]: unknown;
     } | null;
     logo_url: string | null;
     is_active: boolean;
 }
 
+interface ConfigField {
+    key: string;
+    label: string;
+    type: string;
+    options?: string[];
+}
+
+interface MarketOption {
+    code: string;
+    name: string;
+    currency: string;
+}
+
 interface AvailableDriver {
     name: string;
     class: string;
-    default_countries: string;
+    supported_country_options: MarketOption[];
+    default_countries: string[];
+    default_logo: string | null;
+    config_fields: ConfigField[];
+}
+
+const FALLBACK_CONFIG_FIELDS: ConfigField[] = [{ key: 'api_key', label: 'API Key / Token', type: 'password' }];
+
+/**
+ * Compact summary of supported markets: lists them inline when few, otherwise a
+ * count with a Radix hover-card revealing all of them (so the card never breaks).
+ */
+function MarketsSummary({ labels }: { labels: string[] }) {
+    if (labels.length === 0) {
+        return <span className="font-medium text-neutral-700 dark:text-neutral-300">—</span>;
+    }
+
+    if (labels.length <= 4) {
+        return <span className="font-medium text-neutral-700 dark:text-neutral-300">{labels.join(', ')}</span>;
+    }
+
+    return (
+        <HoverCard.Root>
+            <HoverCard.Trigger>
+                <span className="cursor-default font-medium text-neutral-700 underline decoration-dotted underline-offset-2 dark:text-neutral-300">
+                    {labels.length} countries
+                </span>
+            </HoverCard.Trigger>
+            <HoverCard.Content size="1" maxWidth="280px">
+                <div className="flex flex-wrap gap-1">
+                    {labels.map((label) => (
+                        <span key={label} className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
+                            {label}
+                        </span>
+                    ))}
+                </div>
+            </HoverCard.Content>
+        </HoverCard.Root>
+    );
 }
 
 interface IndexProps {
@@ -48,14 +100,104 @@ export default function Index({ providers, availableDrivers = [] }: IndexProps) 
         processing,
         errors,
         reset,
-    } = useForm({
+    } = useForm<{
+        name: string;
+        class: string;
+        config: Record<string, string>;
+        supported_countries: string[];
+        logo_url: string;
+        is_active: boolean;
+    }>({
         name: '',
         class: '',
-        api_key: '',
-        supported_countries: 'ZM,MW',
+        config: {},
+        supported_countries: [],
         logo_url: '',
         is_active: true,
     });
+
+    const toggleCountry = (code: string) =>
+        setData(
+            'supported_countries',
+            data.supported_countries.includes(code) ? data.supported_countries.filter((c) => c !== code) : [...data.supported_countries, code],
+        );
+
+    const fieldErrors = errors as Record<string, string | undefined>;
+    const setConfigField = (key: string, value: string) => setData('config', { ...data.config, [key]: value });
+    const editDriver = availableDrivers.find((d) => d.class === editingProvider?.class);
+
+    // Seed config values: existing value, else the first option for selects, else blank.
+    const initialConfig = (fields: ConfigField[], existing: Record<string, unknown> = {}): Record<string, string> =>
+        Object.fromEntries(fields.map((f) => [f.key, String(existing[f.key] ?? f.options?.[0] ?? '')]));
+
+    // Renders a credential input — a dropdown for fields with fixed options, a text/password input otherwise.
+    const configFieldRow = (field: ConfigField, idPrefix: string, required: boolean, labelSuffix = '') => (
+        <div key={field.key} className="space-y-1">
+            <Label htmlFor={`${idPrefix}-${field.key}`}>
+                {field.label}
+                {labelSuffix}
+            </Label>
+            {field.options ? (
+                <select
+                    id={`${idPrefix}-${field.key}`}
+                    value={data.config[field.key] || ''}
+                    onChange={(e) => setConfigField(field.key, e.target.value)}
+                    required={required}
+                    className="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-9 w-full rounded-full border bg-transparent px-3.5 py-1 text-sm shadow-xs outline-none focus-visible:ring-[3px]"
+                >
+                    {field.options.map((opt) => (
+                        <option key={opt} value={opt}>
+                            {opt}
+                        </option>
+                    ))}
+                </select>
+            ) : (
+                <Input
+                    id={`${idPrefix}-${field.key}`}
+                    type={field.type}
+                    value={data.config[field.key] || ''}
+                    onChange={(e) => setConfigField(field.key, e.target.value)}
+                    placeholder={field.type === 'password' ? '••••••••' : ''}
+                    required={required}
+                />
+            )}
+            {fieldErrors[`config.${field.key}`] && <p className="text-xs text-red-500">{fieldErrors[`config.${field.key}`]}</p>}
+        </div>
+    );
+
+    // Renders the supported-markets checkbox grid (name + ISO code + currency).
+    const marketsCheckboxes = (options: MarketOption[]) => (
+        <div className="space-y-1">
+            <Label>Supported Countries</Label>
+            {options.length === 0 ? (
+                <p className="text-xs text-neutral-400">This driver has no configurable markets.</p>
+            ) : (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {options.map((market) => {
+                        const checked = data.supported_countries.includes(market.code);
+                        return (
+                            <label
+                                key={market.code}
+                                className={cn(
+                                    'flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors',
+                                    checked ? 'border-primary bg-primary/5' : 'border-neutral-200 hover:border-neutral-300 dark:border-neutral-800',
+                                )}
+                            >
+                                <Checkbox checked={checked} onCheckedChange={() => toggleCountry(market.code)} />
+                                <span className="flex flex-col leading-tight">
+                                    <span className="font-medium">{market.name}</span>
+                                    <span className="text-xs text-neutral-400">
+                                        {market.code} · {market.currency}
+                                    </span>
+                                </span>
+                            </label>
+                        );
+                    })}
+                </div>
+            )}
+            {fieldErrors['supported_countries'] && <p className="text-xs text-red-500">{fieldErrors['supported_countries']}</p>}
+        </div>
+    );
 
     const openCreateModal = () => {
         reset();
@@ -65,12 +207,14 @@ export default function Index({ providers, availableDrivers = [] }: IndexProps) 
 
     const openEditModal = (provider: PaymentProvider) => {
         setEditingProvider(provider);
+        const driver = availableDrivers.find((d) => d.class === provider.class);
+        const fields = driver?.config_fields?.length ? driver.config_fields : FALLBACK_CONFIG_FIELDS;
         const countries = provider.config?.supported_countries;
         setData({
             name: provider.name,
             class: provider.class,
-            api_key: provider.config?.api_key || '',
-            supported_countries: Array.isArray(countries) ? countries.join(',') : (countries || 'ZM,MW'),
+            config: initialConfig(fields, provider.config ?? {}),
+            supported_countries: Array.isArray(countries) ? countries : countries ? [countries] : [],
             logo_url: provider.logo_url || '',
             is_active: provider.is_active,
         });
@@ -138,7 +282,9 @@ export default function Index({ providers, availableDrivers = [] }: IndexProps) 
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                     {providers.map((provider) => {
                         const countries = provider.config?.supported_countries;
-                        const countryString = Array.isArray(countries) ? countries.join(', ') : (countries || 'ZM, MW');
+                        const codes = Array.isArray(countries) ? countries : countries ? [countries] : [];
+                        const driverOptions = availableDrivers.find((d) => d.class === provider.class)?.supported_country_options ?? [];
+                        const countryLabels = codes.map((code) => driverOptions.find((o) => o.code === code)?.name ?? code);
 
                         return (
                             <Card key={provider.id} className="flex flex-col border border-sidebar-border/70 dark:border-sidebar-border shadow-sm hover:shadow-md transition-shadow">
@@ -176,14 +322,16 @@ export default function Index({ providers, availableDrivers = [] }: IndexProps) 
                                         <span className="truncate" title={provider.class}>{provider.class}</span>
                                     </div>
 
-                                    <div className="flex items-center text-xs text-neutral-600 dark:text-neutral-400 gap-2">
-                                        <Globe className="h-4.5 w-4.5 opacity-80" />
-                                        <span>Countries: <span className="font-semibold text-neutral-800 dark:text-neutral-200">{countryString}</span></span>
+                                    <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
+                                        <Globe className="h-4.5 w-4.5 shrink-0 opacity-80" />
+                                        <span className="flex items-center gap-1">
+                                            Countries: <MarketsSummary labels={countryLabels} />
+                                        </span>
                                     </div>
 
                                     <div className="flex items-center text-xs text-neutral-600 dark:text-neutral-400 gap-2">
                                         <Key className="h-4.5 w-4.5 opacity-80" />
-                                        <span>API Key: <span className="font-mono bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 rounded text-neutral-800 dark:text-neutral-200">••••••••</span></span>
+                                        <span>Credentials: <span className="font-mono bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 rounded text-neutral-800 dark:text-neutral-200">••••••••</span></span>
                                     </div>
                                 </CardContent>
                                 <CardFooter className="flex justify-end gap-2 border-t border-sidebar-border/30 dark:border-sidebar-border/50 pt-3">
@@ -240,14 +388,25 @@ export default function Index({ providers, availableDrivers = [] }: IndexProps) 
                                                 ...d,
                                                 class: driver.class,
                                                 name: d.name || driver.name,
-                                                supported_countries: d.supported_countries || driver.default_countries,
+                                                supported_countries: d.supported_countries.length ? d.supported_countries : driver.default_countries,
+                                                logo_url: d.logo_url || driver.default_logo || '',
+                                                config: initialConfig(driver.config_fields?.length ? driver.config_fields : FALLBACK_CONFIG_FIELDS),
                                             }));
                                         }}
-                                        className="group flex flex-col justify-between p-4 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:border-black dark:hover:border-white bg-neutral-50/50 dark:bg-neutral-900/50 cursor-pointer transition-all duration-200 shadow-sm hover:shadow-md"
+                                        className="group flex flex-col justify-between p-4 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:border-primary bg-neutral-50/50 dark:bg-neutral-900/50 cursor-pointer transition-all duration-200 shadow-sm hover:shadow-md"
                                     >
                                         <div className="space-y-1">
-                                            <div className="font-semibold text-neutral-900 dark:text-neutral-100 group-hover:text-black dark:group-hover:text-white flex items-center gap-2">
-                                                <FileCode className="h-4 w-4 text-neutral-500" />
+                                            <div className="font-semibold text-neutral-900 dark:text-neutral-100 group-hover:text-primary flex items-center gap-2">
+                                                {driver.default_logo ? (
+                                                    <img
+                                                        src={driver.default_logo}
+                                                        alt={driver.name}
+                                                        className="h-4 w-4 object-contain"
+                                                        onError={(e) => (e.currentTarget.style.display = 'none')}
+                                                    />
+                                                ) : (
+                                                    <FileCode className="h-4 w-4 text-neutral-500" />
+                                                )}
                                                 {driver.name}
                                             </div>
                                             <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate max-w-[200px]" title={driver.class}>
@@ -255,8 +414,8 @@ export default function Index({ providers, availableDrivers = [] }: IndexProps) 
                                             </div>
                                         </div>
                                         <div className="text-xs text-neutral-500 mt-4 flex items-center gap-1">
-                                            <Globe className="h-3 w-3" />
-                                            Supports: <span className="font-medium text-neutral-700 dark:text-neutral-300">{driver.default_countries}</span>
+                                            <Globe className="h-3 w-3 shrink-0" />
+                                            Supports: <MarketsSummary labels={driver.supported_country_options.map((m) => m.name)} />
                                         </div>
                                     </div>
                                 ))}
@@ -300,40 +459,34 @@ export default function Index({ providers, availableDrivers = [] }: IndexProps) 
                                 {errors.class && <p className="text-xs text-red-500">{errors.class}</p>}
                             </div>
 
-                            <div className="space-y-1">
-                                <Label htmlFor="api_key">API Key / Token</Label>
-                                <Input
-                                    id="api_key"
-                                    type="password"
-                                    value={data.api_key}
-                                    onChange={(e) => setData('api_key', e.target.value)}
-                                    placeholder="sk_live_..."
-                                    required
-                                />
-                                {errors.api_key && <p className="text-xs text-red-500">{errors.api_key}</p>}
-                            </div>
+                            {(selectedDriver.config_fields?.length ? selectedDriver.config_fields : FALLBACK_CONFIG_FIELDS).map((field) =>
+                                configFieldRow(field, 'cfg', true),
+                            )}
 
-                            <div className="space-y-1">
-                                <Label htmlFor="supported_countries">Supported Countries (Comma separated)</Label>
-                                <Input
-                                    id="supported_countries"
-                                    value={data.supported_countries}
-                                    onChange={(e) => setData('supported_countries', e.target.value)}
-                                    placeholder="ZM,MW"
-                                    required
-                                />
-                                {errors.supported_countries && <p className="text-xs text-red-500">{errors.supported_countries}</p>}
-                            </div>
+                            {marketsCheckboxes(selectedDriver.supported_country_options)}
 
                             <div className="space-y-1">
                                 <Label htmlFor="logo_url">Logo URL (Optional)</Label>
-                                <Input
-                                    id="logo_url"
-                                    type="url"
-                                    value={data.logo_url}
-                                    onChange={(e) => setData('logo_url', e.target.value)}
-                                    placeholder="https://..."
-                                />
+                                <div className="flex items-center gap-2">
+                                    {data.logo_url && (
+                                        <img
+                                            src={data.logo_url}
+                                            alt="Logo preview"
+                                            className="h-9 w-9 shrink-0 rounded-md border border-neutral-200 object-contain p-0.5 dark:border-neutral-800"
+                                            onError={(e) => (e.currentTarget.style.visibility = 'hidden')}
+                                            onLoad={(e) => (e.currentTarget.style.visibility = 'visible')}
+                                        />
+                                    )}
+                                    <Input
+                                        id="logo_url"
+                                        type="text"
+                                        value={data.logo_url}
+                                        onChange={(e) => setData('logo_url', e.target.value)}
+                                        placeholder="https://..."
+                                        className="flex-1"
+                                    />
+                                </div>
+                                <p className="text-xs text-neutral-400">A default logo is pre-filled for the driver — change it if you'd like.</p>
                                 {errors.logo_url && <p className="text-xs text-red-500">{errors.logo_url}</p>}
                             </div>
 
@@ -399,37 +552,32 @@ export default function Index({ providers, availableDrivers = [] }: IndexProps) 
                             {errors.class && <p className="text-xs text-red-500">{errors.class}</p>}
                         </div>
 
-                        <div className="space-y-1">
-                            <Label htmlFor="edit-api_key">API Key / Token (leave blank to keep current)</Label>
-                            <Input
-                                id="edit-api_key"
-                                type="password"
-                                value={data.api_key}
-                                onChange={(e) => setData('api_key', e.target.value)}
-                                placeholder="••••••••"
-                            />
-                            {errors.api_key && <p className="text-xs text-red-500">{errors.api_key}</p>}
-                        </div>
+                        {(editDriver?.config_fields?.length ? editDriver.config_fields : FALLBACK_CONFIG_FIELDS).map((field) =>
+                            configFieldRow(field, 'edit-cfg', false, field.options ? '' : ' (leave blank to keep current)'),
+                        )}
 
-                        <div className="space-y-1">
-                            <Label htmlFor="edit-supported_countries">Supported Countries (Comma separated)</Label>
-                            <Input
-                                id="edit-supported_countries"
-                                value={data.supported_countries}
-                                onChange={(e) => setData('supported_countries', e.target.value)}
-                                required
-                            />
-                            {errors.supported_countries && <p className="text-xs text-red-500">{errors.supported_countries}</p>}
-                        </div>
+                        {marketsCheckboxes(editDriver?.supported_country_options ?? [])}
 
                         <div className="space-y-1">
                             <Label htmlFor="edit-logo_url">Logo URL (Optional)</Label>
-                            <Input
-                                id="edit-logo_url"
-                                type="url"
-                                value={data.logo_url}
-                                onChange={(e) => setData('logo_url', e.target.value)}
-                            />
+                            <div className="flex items-center gap-2">
+                                {data.logo_url && (
+                                    <img
+                                        src={data.logo_url}
+                                        alt="Logo preview"
+                                        className="h-9 w-9 shrink-0 rounded-md border border-neutral-200 object-contain p-0.5 dark:border-neutral-800"
+                                        onError={(e) => (e.currentTarget.style.visibility = 'hidden')}
+                                        onLoad={(e) => (e.currentTarget.style.visibility = 'visible')}
+                                    />
+                                )}
+                                <Input
+                                    id="edit-logo_url"
+                                    type="text"
+                                    value={data.logo_url}
+                                    onChange={(e) => setData('logo_url', e.target.value)}
+                                    className="flex-1"
+                                />
+                            </div>
                             {errors.logo_url && <p className="text-xs text-red-500">{errors.logo_url}</p>}
                         </div>
 

@@ -6,8 +6,10 @@ use App\ApiResponse;
 use App\Contracts\PaymentProviderInterface;
 use App\Jobs\SendTransactionCallback;
 use App\Models\Transaction;
+use App\Support\Market;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class SwitchController extends Controller
 {
@@ -16,7 +18,7 @@ class SwitchController extends Controller
         $request->validate([
             'amount' => 'required|numeric|min:0.01',
             'account_number' => 'required|string',
-            'country' => 'required|string|size:2|in:ZM,MW',
+            'country' => ['required', 'string', 'size:2', Rule::in(Market::codes())],
             // Optional: where we POST the final (successful/failed) result.
             'callback_url' => 'nullable|url',
         ]);
