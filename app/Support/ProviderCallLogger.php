@@ -85,6 +85,7 @@ class ProviderCallLogger
             ProviderLog::create([
                 'payment_provider_id' => ProviderCallContext::providerId(),
                 'user_id' => ProviderCallContext::userId(),
+                'request_id' => RequestContext::id(),
                 'method' => $request->method(),
                 'url' => $request->url(),
                 'host' => parse_url($request->url(), PHP_URL_HOST) ?: null,

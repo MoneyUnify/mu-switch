@@ -10,6 +10,7 @@ class ProviderLog extends Model
     protected $fillable = [
         'payment_provider_id',
         'user_id',
+        'request_id',
         'method',
         'url',
         'host',

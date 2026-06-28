@@ -105,6 +105,26 @@ Market data (name, currency, calling code) lives centrally in
 `TARGET_ENVIRONMENTS` map. To enable it, add a provider in the dashboard, choose
 the **MTN MoMo** driver, paste the three credentials above, and tick the markets.
 
+## Built-in driver: Lipila
+
+The platform also ships a **Lipila** driver (`LipilaController`) for mobile-money
+collections in Zambia (MTN, Airtel, and Zamtel). Lipila is a Zambian aggregator
+that authenticates with a single secret key — there is no token exchange — so you
+provide just:
+
+| Credential | Description |
+| --- | --- |
+| **API Key** | Your Lipila secret key, sent as the `x-api-key` header. |
+
+The driver initiates a collection (request to pay) against Lipila's production
+host (`https://blz.lipila.io`), normalising the payer's number to the
+international `260…` account format and using `ZMW`. The collection starts as
+**pending** while the payer authorises on their handset; verification re-checks
+the status (`Pending` → pending, `Successful` → success, `Failed` → failed).
+
+To enable it, add a provider in the dashboard, choose the **Lipila** driver,
+paste your API key, and tick Zambia.
+
 ## Adding your own driver
 
 Drivers are plain classes in `app/Http/Controllers/Providers` that implement

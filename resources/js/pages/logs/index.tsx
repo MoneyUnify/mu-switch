@@ -1,13 +1,30 @@
 import { Head, Link, router, usePoll } from '@inertiajs/react';
 import { AlertTriangle, ChevronLeft, ChevronRight, Search, ScrollText } from 'lucide-react';
 import { useState } from 'react';
-import { Button, Select, TextField } from '@radix-ui/themes';
+import { Badge as RtBadge, Button, Select, Tabs, TextField } from '@radix-ui/themes';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { StatusAreaChart, type StatusPoint } from '@/components/status-area-chart';
 import logs from '@/routes/logs';
 import { cn } from '@/lib/utils';
+
+interface MnoCall {
+    id: number;
+    provider: string | null;
+    method: string;
+    host: string | null;
+    path: string;
+    url: string;
+    status: number | null;
+    durationMs: number | null;
+    failed: boolean;
+    errorMessage: string | null;
+    requestHeaders: Record<string, string[]> | null;
+    requestBody: string | null;
+    responseBody: string | null;
+    createdAt: string | null;
+}
 
 interface LogRow {
     id: number;
@@ -28,6 +45,7 @@ interface LogRow {
     responseBody: string | null;
     createdAtHuman: string | null;
     createdAt: string | null;
+    mnoCalls: MnoCall[];
 }
 
 interface Paginated<T> {
@@ -166,6 +184,52 @@ function Section({ title, children }: { title: string; children: React.ReactNode
                 {children}
             </pre>
         </div>
+    );
+}
+
+/**
+ * A single outgoing MNO call in the request lifecycle, expandable to reveal its
+ * request/response payloads.
+ */
+function MnoCallItem({ call, index }: { call: MnoCall; index: number }) {
+    return (
+        <details className="group rounded-md border border-sidebar-border/60 dark:border-sidebar-border">
+            <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs">
+                <span className="w-4 shrink-0 text-neutral-400 tabular-nums">{index + 1}</span>
+                {call.failed && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-500" />}
+                <span className={cn('shrink-0 font-mono font-semibold', methodClasses(call.method))}>{call.method}</span>
+                <span className="min-w-0 flex-1 truncate font-mono text-neutral-700 dark:text-neutral-300" title={call.url}>
+                    {call.path}
+                </span>
+                {call.provider && (
+                    <RtBadge variant="soft" color="gray" size="1">
+                        {call.provider}
+                    </RtBadge>
+                )}
+                <span className={cn('shrink-0 rounded px-1.5 py-0.5 font-medium tabular-nums', statusClasses(call.status))}>
+                    {call.status ?? 'ERR'}
+                </span>
+                <span className="w-14 shrink-0 text-right text-neutral-400 tabular-nums">
+                    {call.durationMs !== null ? `${call.durationMs} ms` : '—'}
+                </span>
+            </summary>
+            <div className="space-y-3 border-t border-sidebar-border/50 px-3 py-3 dark:border-sidebar-border/70">
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+                    {call.host && <span>Host: {call.host}</span>}
+                    {call.createdAt && <span>{call.createdAt}</span>}
+                </div>
+                {call.failed && call.errorMessage && (
+                    <div className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                        {call.errorMessage}
+                    </div>
+                )}
+                {call.requestHeaders && Object.keys(call.requestHeaders).length > 0 && (
+                    <Section title="Request Headers">{JSON.stringify(call.requestHeaders, null, 2)}</Section>
+                )}
+                {call.requestBody && <Section title="Request Body">{prettyJson(call.requestBody)}</Section>}
+                {call.responseBody && <Section title="Response Body">{prettyJson(call.responseBody)}</Section>}
+            </div>
+        </details>
     );
 }
 
@@ -436,32 +500,56 @@ export default function Index({ logs: page, stats, chart, filters, fieldOptions,
                     </DialogHeader>
 
                     {selected && (
-                        <div className="-mr-2 flex-1 space-y-4 overflow-x-hidden overflow-y-auto pr-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                                <span className={cn('inline-flex rounded-md px-2 py-0.5 text-xs font-medium', statusClasses(selected.status))}>
-                                    HTTP {selected.status ?? '—'}
-                                </span>
-                                {selected.route && <Badge variant="outline">{selected.route}</Badge>}
-                            </div>
+                        <Tabs.Root defaultValue="overview" className="flex min-h-0 flex-1 flex-col">
+                            <Tabs.List>
+                                <Tabs.Trigger value="overview">Overview</Tabs.Trigger>
+                                <Tabs.Trigger value="mno">MNO Calls ({selected.mnoCalls.length})</Tabs.Trigger>
+                            </Tabs.List>
 
-                            {selected.hasException && (
-                                <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-500/30 dark:bg-red-500/10">
-                                    <div className="flex items-center gap-2 text-sm font-semibold text-red-700 dark:text-red-400">
-                                        <AlertTriangle className="h-4 w-4" /> {selected.exceptionClass}
-                                    </div>
-                                    {selected.exceptionMessage && (
-                                        <p className="mt-1 text-xs break-words text-red-700/90 dark:text-red-300">{selected.exceptionMessage}</p>
-                                    )}
+                            <Tabs.Content value="overview" className="-mr-2 mt-3 min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto pr-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <span className={cn('inline-flex rounded-md px-2 py-0.5 text-xs font-medium', statusClasses(selected.status))}>
+                                        HTTP {selected.status ?? '—'}
+                                    </span>
+                                    {selected.route && <Badge variant="outline">{selected.route}</Badge>}
                                 </div>
-                            )}
 
-                            {selected.requestBody && Object.keys(selected.requestBody).length > 0 && (
-                                <Section title="Request Body">{JSON.stringify(selected.requestBody, null, 2)}</Section>
-                            )}
-                            {selected.requestHeaders && <Section title="Request Headers">{JSON.stringify(selected.requestHeaders, null, 2)}</Section>}
-                            {selected.responseBody && <Section title="Response Body">{prettyJson(selected.responseBody)}</Section>}
-                            {selected.exceptionTrace && <Section title="Stack Trace">{selected.exceptionTrace}</Section>}
-                        </div>
+                                {selected.hasException && (
+                                    <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-500/30 dark:bg-red-500/10">
+                                        <div className="flex items-center gap-2 text-sm font-semibold text-red-700 dark:text-red-400">
+                                            <AlertTriangle className="h-4 w-4" /> {selected.exceptionClass}
+                                        </div>
+                                        {selected.exceptionMessage && (
+                                            <p className="mt-1 text-xs break-words text-red-700/90 dark:text-red-300">{selected.exceptionMessage}</p>
+                                        )}
+                                    </div>
+                                )}
+
+                                {selected.requestBody && Object.keys(selected.requestBody).length > 0 && (
+                                    <Section title="Request Body">{JSON.stringify(selected.requestBody, null, 2)}</Section>
+                                )}
+                                {selected.requestHeaders && <Section title="Request Headers">{JSON.stringify(selected.requestHeaders, null, 2)}</Section>}
+                                {selected.responseBody && <Section title="Response Body">{prettyJson(selected.responseBody)}</Section>}
+                                {selected.exceptionTrace && <Section title="Stack Trace">{selected.exceptionTrace}</Section>}
+                            </Tabs.Content>
+
+                            <Tabs.Content value="mno" className="-mr-2 mt-3 min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-2">
+                                {selected.mnoCalls.length === 0 ? (
+                                    <div className="py-10 text-center text-xs text-neutral-400">
+                                        This request made no internal MNO/gateway calls.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                                            The outgoing gateway calls made while serving this request, in order — the full lifecycle behind the response above.
+                                        </p>
+                                        {selected.mnoCalls.map((call, i) => (
+                                            <MnoCallItem key={call.id} call={call} index={i} />
+                                        ))}
+                                    </div>
+                                )}
+                            </Tabs.Content>
+                        </Tabs.Root>
                     )}
                 </DialogContent>
             </Dialog>

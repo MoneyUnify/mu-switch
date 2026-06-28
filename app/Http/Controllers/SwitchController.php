@@ -20,6 +20,8 @@ class SwitchController extends Controller
             'amount' => 'required|numeric|min:0.01',
             'account_number' => 'required|string',
             'country' => ['required', 'string', 'size:2', Rule::in(Market::codes())],
+            // Optional payer email — forwarded to providers that accept one.
+            'email' => 'nullable|email',
             // Optional: where we POST the final (successful/failed) result.
             'callback_url' => 'nullable|url',
         ]);

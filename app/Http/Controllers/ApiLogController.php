@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ApiLog;
+use App\Models\ProviderLog;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -185,6 +186,7 @@ class ApiLogController extends Controller
             ->when($status === 'success', fn (Builder $q) => $q->whereBetween('response_status', [200, 299]))
             ->when($status === 'client', fn (Builder $q) => $q->whereBetween('response_status', [400, 499]))
             ->when($status === 'server', fn (Builder $q) => $q->whereBetween('response_status', [500, 599]))
+            ->with(['providerCalls.paymentProvider'])
             ->latest('id')
             ->paginate($perPage)
             ->withQueryString()
@@ -207,7 +209,34 @@ class ApiLogController extends Controller
                 'responseBody' => $log->response_body,
                 'createdAtHuman' => $log->created_at?->diffForHumans(),
                 'createdAt' => $log->created_at?->format('Y-m-d H:i:s T'),
+                'mnoCalls' => $this->mnoCalls($log),
             ]);
+    }
+
+    /**
+     * The outgoing gateway (MNO) calls made while serving this request, for the
+     * full request lifecycle (auth/token → request-to-pay → status checks).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function mnoCalls(ApiLog $log): array
+    {
+        return $log->providerCalls->map(fn (ProviderLog $call): array => [
+            'id' => $call->id,
+            'provider' => $call->paymentProvider?->name,
+            'method' => $call->method,
+            'host' => $call->host,
+            'path' => parse_url((string) $call->url, PHP_URL_PATH) ?: $call->url,
+            'url' => $call->url,
+            'status' => $call->response_status,
+            'durationMs' => $call->duration_ms,
+            'failed' => $call->failed,
+            'errorMessage' => $call->error_message,
+            'requestHeaders' => $call->request_headers,
+            'requestBody' => $call->request_body,
+            'responseBody' => $call->response_body,
+            'createdAt' => $call->created_at?->format('Y-m-d H:i:s T'),
+        ])->values()->all();
     }
 
     /**

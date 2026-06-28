@@ -4,11 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ApiLog extends Model
 {
     protected $fillable = [
         'user_id',
+        'request_id',
         'method',
         'url',
         'route',
@@ -30,6 +32,15 @@ class ApiLog extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * The outgoing gateway (MNO) calls this request triggered, correlated by the
+     * shared request id, in the order they were made.
+     */
+    public function providerCalls(): HasMany
+    {
+        return $this->hasMany(ProviderLog::class, 'request_id', 'request_id')->oldest('id');
     }
 
     /**

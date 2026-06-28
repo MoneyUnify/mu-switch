@@ -3,10 +3,12 @@
 namespace App\Http\Middleware;
 
 use App\Models\ApiLog;
+use App\Support\RequestContext;
 use Closure;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -46,7 +48,12 @@ class LogApiRequests
     {
         $startedAt = microtime(true);
 
+        // Correlate this request with every MNO call it triggers.
+        $requestId = (string) Str::uuid();
+        RequestContext::set($requestId);
+
         $snapshot = [
+            'request_id' => $requestId,
             'method' => $request->method(),
             'url' => $request->fullUrl(),
             'ip_address' => $request->ip(),
@@ -67,6 +74,7 @@ class LogApiRequests
         }
 
         $this->persist($request, $snapshot, $response, $exception, $startedAt);
+        RequestContext::clear();
 
         return $response;
     }

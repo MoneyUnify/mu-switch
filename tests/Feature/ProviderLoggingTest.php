@@ -139,6 +139,35 @@ test('the provider logs page lists that provider call history scoped to the owne
         );
 });
 
+test('the api logs page traces the MNO calls a request triggered', function () {
+    $user = User::factory()->create(['api_token' => 'log-trace']);
+    loggedAirtelProvider($user);
+
+    Http::fake([
+        '*/auth/oauth2/token' => Http::response(['access_token' => 'tok-123', 'expires_in' => 3600], 200),
+        '*/merchant/v1/payments/' => Http::response([
+            'data' => ['transaction' => ['id' => 'AIRTEL-1', 'status' => 'TIP']],
+            'status' => ['success' => true],
+        ], 200),
+    ]);
+
+    // Make a payment so the inbound API request spawns two MNO calls.
+    $this->withToken('log-trace')
+        ->postJson('/api/v1/payment/request', ['amount' => 30, 'account_number' => '0977123456', 'country' => 'ZM'])
+        ->assertOk();
+
+    // The /logs page exposes those MNO calls under the matching API log.
+    $this->actingAs($user)
+        ->get(route('logs.index'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('logs.data.0.path', '/api/v1/payment/request')
+            ->has('logs.data.0.mnoCalls', 2)
+            ->where('logs.data.0.mnoCalls.0.provider', 'Airtel Money')
+            ->where('logs.data.0.mnoCalls.1.status', 200)
+        );
+});
+
 test('a user cannot view another account provider logs', function () {
     $owner = User::factory()->create();
     $intruder = User::factory()->create();
