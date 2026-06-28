@@ -1,7 +1,8 @@
 import { Link } from '@inertiajs/react';
 import logs from '@/routes/logs';
+import payments from '@/routes/payments';
 import providers from '@/routes/providers';
-import { BookOpen, Sliders, LayoutGrid, ScrollText } from 'lucide-react';
+import { BookOpen, Sliders, LayoutGrid, ScrollText, Wallet } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -28,6 +29,11 @@ const mainNavItems: NavItem[] = [
         title: 'Providers',
         href: providers.index.url(),
         icon: Sliders,
+    },
+    {
+        title: 'Payments',
+        href: payments.index.url(),
+        icon: Wallet,
     },
     {
         title: 'Logs',

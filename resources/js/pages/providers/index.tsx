@@ -1,8 +1,8 @@
 import { Head, Link, useForm } from '@inertiajs/react';
-import { Plus, Settings, Trash2, CheckCircle2, XCircle, Globe, Key, FileCode, ScrollText } from 'lucide-react';
+import { Plus, Settings, Trash2, CheckCircle2, XCircle, Globe, Key, FileCode, ScrollText, Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Button, HoverCard } from '@radix-ui/themes';
+import { AlertDialog, Button, Flex, HoverCard } from '@radix-ui/themes';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -89,6 +89,7 @@ interface IndexProps {
 export default function Index({ providers, availableDrivers = [] }: IndexProps) {
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [editingProvider, setEditingProvider] = useState<PaymentProvider | null>(null);
+    const [deleteTarget, setDeleteTarget] = useState<PaymentProvider | null>(null);
     const [selectedDriver, setSelectedDriver] = useState<AvailableDriver | null>(null);
 
     const {
@@ -250,17 +251,20 @@ export default function Index({ providers, availableDrivers = [] }: IndexProps) 
         });
     };
 
-    const handleDelete = (id: number) => {
-        if (confirm('Are you sure you want to delete this provider?')) {
-            destroy(providersRoute.destroy.url(id), {
-                onSuccess: () => {
-                    toast.success('Provider deleted successfully');
-                },
-                onError: () => {
-                    toast.error('Failed to delete provider');
-                },
-            });
+    const confirmDelete = () => {
+        if (!deleteTarget) {
+            return;
         }
+
+        destroy(providersRoute.destroy.url(deleteTarget.id), {
+            onSuccess: () => {
+                toast.success('Provider deleted successfully');
+                setDeleteTarget(null);
+            },
+            onError: () => {
+                toast.error('Failed to delete provider');
+            },
+        });
     };
 
     return (
@@ -341,10 +345,10 @@ export default function Index({ providers, availableDrivers = [] }: IndexProps) 
                                         </Link>
                                     </Button>
                                     <Button variant="outline" size="1" onClick={() => openEditModal(provider)} className="cursor-pointer">
-                                        Edit
+                                        <Pencil className="h-3 w-3" /> Edit
                                     </Button>
-                                    <Button color="red" size="1" onClick={() => handleDelete(provider.id)} className="cursor-pointer">
-                                        <Trash2 className="h-4 w-4" />
+                                    <Button color="red" variant="soft" size="1" onClick={() => setDeleteTarget(provider)} className="cursor-pointer">
+                                        <Trash2 className="h-3 w-3" /> Delete
                                     </Button>
                                 </CardFooter>
                             </Card>
@@ -608,6 +612,29 @@ export default function Index({ providers, availableDrivers = [] }: IndexProps) 
                     </form>
                 </DialogContent>
             </Dialog>
+
+            {/* Delete confirmation */}
+            <AlertDialog.Root open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+                <AlertDialog.Content maxWidth="450px">
+                    <AlertDialog.Title>Delete provider</AlertDialog.Title>
+                    <AlertDialog.Description size="2">
+                        Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This permanently removes the provider and its
+                        call logs. Transactions already processed are kept.
+                    </AlertDialog.Description>
+                    <Flex gap="3" mt="4" justify="end">
+                        <AlertDialog.Cancel>
+                            <Button variant="soft" color="gray" className="cursor-pointer">
+                                Cancel
+                            </Button>
+                        </AlertDialog.Cancel>
+                        <AlertDialog.Action>
+                            <Button color="red" onClick={confirmDelete} disabled={processing} className="cursor-pointer">
+                                <Trash2 className="h-3 w-3" /> Delete provider
+                            </Button>
+                        </AlertDialog.Action>
+                    </Flex>
+                </AlertDialog.Content>
+            </AlertDialog.Root>
         </>
     );
 }
