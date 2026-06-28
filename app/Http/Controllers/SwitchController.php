@@ -7,6 +7,7 @@ use App\Contracts\PaymentProviderInterface;
 use App\Jobs\SendTransactionCallback;
 use App\Models\Transaction;
 use App\Support\Market;
+use App\Support\ProviderCallContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -56,7 +57,11 @@ class SwitchController extends Controller
             return ApiResponse::error('No active providers support the requested country', 400);
         }
 
-        // 2. Iterate through filtered providers sequentially, retrying on failure
+        // 2. Iterate through filtered providers sequentially, falling back to the
+        //    next active provider on ANY failure — a non-success response, a
+        //    config error, or an exception (e.g. failed authentication or an
+        //    unreachable gateway). One provider's failure must never abort the
+        //    chain while another could still process the request.
         $lastError = null;
 
         foreach ($filteredProviders as $provider) {
@@ -68,32 +73,46 @@ class SwitchController extends Controller
                 continue;
             }
 
-            $providerInstance = app($providerClass);
+            // Attribute this provider's outgoing gateway calls (incl. auth) to it.
+            ProviderCallContext::set($provider);
 
-            if (! $providerInstance instanceof PaymentProviderInterface) {
-                $lastError = ApiResponse::error('Payment Driver must implement PaymentProviderInterface', 500);
+            try {
+                $providerInstance = app($providerClass);
 
-                continue;
-            }
+                if (! $providerInstance instanceof PaymentProviderInterface) {
+                    $lastError = ApiResponse::error('Payment Driver must implement PaymentProviderInterface', 500);
 
-            $config = $providerInstance->setProvider($provider);
-            if ($config instanceof JsonResponse) {
-                $lastError = $config;
+                    continue;
+                }
 
-                continue;
-            }
+                $configError = $providerInstance->setProvider($provider);
+                if ($configError instanceof JsonResponse) {
+                    $lastError = $configError;
 
-            // Execute the payment on the actual instance
-            $response = $providerInstance->requestPayment($request);
+                    continue;
+                }
 
-            if ($response instanceof JsonResponse) {
-                if ($response->getStatusCode() === 200) {
+                // Execute the payment on the actual instance.
+                $response = $providerInstance->requestPayment($request);
+
+                // A 2xx means the provider accepted/initiated the request — done.
+                if ($response instanceof JsonResponse && $response->getStatusCode() < 300) {
                     return $response;
                 }
 
-                $lastError = $response;
-            } else {
-                $lastError = ApiResponse::error('Invalid response from provider', 500);
+                // Any other outcome (auth failure, decline, server error) — keep
+                // it as the fallback result and try the next active provider.
+                $lastError = $response instanceof JsonResponse
+                    ? $response
+                    : ApiResponse::error('Invalid response from provider', 500);
+            } catch (\Throwable $e) {
+                // A provider that throws (hard auth failure, network/connection
+                // error, etc.) must not stop the switch — log it and move on.
+                report($e);
+
+                $lastError = ApiResponse::error("Provider {$provider->name} is currently unavailable", 502);
+            } finally {
+                ProviderCallContext::clear();
             }
         }
 
@@ -139,12 +158,19 @@ class SwitchController extends Controller
             return ApiResponse::error('Payment driver must implement PaymentProviderInterface', 500);
         }
 
-        if ($configError = $providerInstance->setProvider($provider)) {
-            return $configError;
-        }
+        // Attribute the verification's outgoing gateway calls to this provider.
+        ProviderCallContext::set($provider);
 
-        // The provider re-checks the transaction and persists its latest status.
-        $response = $providerInstance->verifyPayment($transaction);
+        try {
+            if ($configError = $providerInstance->setProvider($provider)) {
+                return $configError;
+            }
+
+            // The provider re-checks the transaction and persists its latest status.
+            $response = $providerInstance->verifyPayment($transaction);
+        } finally {
+            ProviderCallContext::clear();
+        }
 
         $this->notifyCallbackIfSettled($transaction->refresh());
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Contracts\PaymentProviderInterface;
 use App\Models\PaymentProvider;
+use App\Models\ProviderLog;
 use App\Support\Market;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -55,6 +56,53 @@ class ProviderController extends Controller
         return Inertia::render('providers/index', [
             'providers' => $this->providersForDisplay($request->user()),
             'availableDrivers' => $drivers,
+        ]);
+    }
+
+    /**
+     * Show the outgoing call history (requests + responses) for a provider.
+     */
+    public function logs(Request $request, PaymentProvider $provider): Response
+    {
+        if ($provider->user_id !== $request->user()->id) {
+            abort(403);
+        }
+
+        $logs = $provider->providerLogs()
+            ->latest('id')
+            ->paginate(15)
+            ->withQueryString()
+            ->through(fn (ProviderLog $log): array => [
+                'id' => $log->id,
+                'method' => $log->method,
+                'url' => $log->url,
+                'host' => $log->host,
+                'path' => parse_url((string) $log->url, PHP_URL_PATH) ?: $log->url,
+                'status' => $log->response_status,
+                'durationMs' => $log->duration_ms,
+                'failed' => $log->failed,
+                'errorMessage' => $log->error_message,
+                'requestHeaders' => $log->request_headers,
+                'requestBody' => $log->request_body,
+                'responseBody' => $log->response_body,
+                'createdAtHuman' => $log->created_at?->diffForHumans(),
+                'createdAt' => $log->created_at?->format('Y-m-d H:i:s T'),
+            ]);
+
+        return Inertia::render('providers/logs', [
+            'provider' => [
+                'id' => $provider->id,
+                'name' => $provider->name,
+                'class' => $provider->class,
+                'logo_url' => $provider->logo_url,
+                'is_active' => $provider->is_active,
+            ],
+            'logs' => $logs,
+            'stats' => [
+                'total' => $provider->providerLogs()->count(),
+                'successful' => $provider->providerLogs()->whereBetween('response_status', [200, 299])->count(),
+                'failed' => $provider->providerLogs()->where('failed', true)->count(),
+            ],
         ]);
     }
 

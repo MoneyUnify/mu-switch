@@ -1,5 +1,5 @@
-import { Head, useForm } from '@inertiajs/react';
-import { Plus, Settings, Trash2, CheckCircle2, XCircle, Globe, Key, FileCode } from 'lucide-react';
+import { Head, Link, useForm } from '@inertiajs/react';
+import { Plus, Settings, Trash2, CheckCircle2, XCircle, Globe, Key, FileCode, ScrollText } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button, HoverCard } from '@radix-ui/themes';
@@ -335,6 +335,11 @@ export default function Index({ providers, availableDrivers = [] }: IndexProps) 
                                     </div>
                                 </CardContent>
                                 <CardFooter className="flex justify-end gap-2 border-t border-sidebar-border/30 dark:border-sidebar-border/50 pt-3">
+                                    <Button asChild variant="soft" size="1" className="mr-auto cursor-pointer">
+                                        <Link href={providersRoute.logs(provider.id).url}>
+                                            <ScrollText className="h-4 w-4" /> Call logs
+                                        </Link>
+                                    </Button>
                                     <Button variant="outline" size="1" onClick={() => openEditModal(provider)} className="cursor-pointer">
                                         Edit
                                     </Button>

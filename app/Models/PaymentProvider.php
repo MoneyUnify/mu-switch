@@ -13,6 +13,11 @@ class PaymentProvider extends Model
         return $this->hasMany(Transaction::class);
     }
 
+    public function providerLogs()
+    {
+        return $this->hasMany(ProviderLog::class);
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class);

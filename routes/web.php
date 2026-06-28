@@ -20,6 +20,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('logs', [ApiLogController::class, 'index'])->name('logs.index');
 
     Route::get('providers', [ProviderController::class, 'index'])->name('providers.index');
+    Route::get('providers/{provider}/logs', [ProviderController::class, 'logs'])->name('providers.logs');
     Route::post('providers', [ProviderController::class, 'store'])->name('providers.store');
     Route::put('providers/{provider}', [ProviderController::class, 'update'])->name('providers.update');
     Route::delete('providers/{provider}', [ProviderController::class, 'destroy'])->name('providers.destroy');
