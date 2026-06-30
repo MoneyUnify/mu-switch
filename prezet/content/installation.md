@@ -13,7 +13,7 @@ infrastructure you control.
 
 | Dependency | Version | Download |
 | --- | --- | --- |
-| PHP | 8.3 or newer (with `dom` and `gd` extensions) | [php.net/downloads](https://www.php.net/downloads.php) |
+| PHP | 8.4 or newer (with `dom` and `gd` extensions) | [php.net/downloads](https://www.php.net/downloads.php) |
 | Composer | 2.x | [getcomposer.org/download](https://getcomposer.org/download/) |
 | Node.js | 20 or newer | [nodejs.org/download](https://nodejs.org/en/download) |
 | Database | SQLite (default), MySQL, or PostgreSQL | [SQLite](https://www.sqlite.org/download.html) · [MySQL](https://dev.mysql.com/downloads/) · [PostgreSQL](https://www.postgresql.org/download/) |
@@ -32,7 +32,7 @@ through your package manager.
 bundles the `dom` and `gd` extensions, so a single install is enough:
 
 ```bash
-brew install php       # PHP 8.3+ with dom, gd, mbstring, curl, sqlite3, …
+brew install php       # PHP 8.4+ with dom, gd, mbstring, curl, sqlite3, …
 brew install composer  # Composer 2.x
 brew install node      # Node.js 20+
 ```
@@ -42,8 +42,8 @@ packages, so install them alongside the PHP CLI:
 
 ```bash
 sudo apt update
-sudo apt install -y php8.3-cli php8.3-dom php8.3-gd \
-    php8.3-mbstring php8.3-curl php8.3-xml php8.3-sqlite3
+sudo apt install -y php8.4-cli php8.4-dom php8.4-gd \
+    php8.4-mbstring php8.4-curl php8.4-xml php8.4-sqlite3
 ```
 
 > On Fedora / RHEL the equivalent is
@@ -54,11 +54,11 @@ After installing, confirm the version and that the required extensions are
 loaded:
 
 ```bash
-php -v                  # should report 8.3 or newer
+php -v                  # should report 8.4 or newer
 php -m | grep -E 'dom|gd'   # both "dom" and "gd" should be listed
 ```
 
-If an extension is missing, install its package (e.g. `php8.3-gd`) and re-run
+If an extension is missing, install its package (e.g. `php8.4-gd`) and re-run
 the check — no PHP reconfiguration is needed.
 
 ## Quick start

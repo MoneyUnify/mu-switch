@@ -16,7 +16,7 @@ A standalone [API Documentation](API_DOCUMENTATION.md) file is also available fo
 
 ## Requirements
 
-- **PHP 8.3+** (8.5 recommended) with the `dom` and `gd` extensions enabled — [download](https://www.php.net/downloads.php)
+- **PHP 8.4+** (8.5 recommended) with the `dom` and `gd` extensions enabled — [download](https://www.php.net/downloads.php)
 - **Composer** 2.x — [download](https://getcomposer.org/download/)
 - **Node.js 20+** with npm (pnpm or yarn also work) — [download](https://nodejs.org/en/download)
 - A database — **SQLite is the zero-config default**; [MySQL](https://dev.mysql.com/downloads/) or [PostgreSQL](https://www.postgresql.org/download/) also work (any engine with native JSON support), configured via `.env`
@@ -32,7 +32,7 @@ extensions this app needs) through your package manager.
 bundles `dom` and `gd`, so one install is enough:
 
 ```bash
-brew install php       # PHP 8.3+ with dom, gd, mbstring, curl, sqlite3, …
+brew install php       # PHP 8.4+ with dom, gd, mbstring, curl, sqlite3, …
 brew install composer  # Composer 2.x
 brew install node      # Node.js 20+
 ```
@@ -42,8 +42,8 @@ install them alongside the PHP CLI:
 
 ```bash
 sudo apt update
-sudo apt install -y php8.3-cli php8.3-dom php8.3-gd \
-    php8.3-mbstring php8.3-curl php8.3-xml php8.3-sqlite3
+sudo apt install -y php8.4-cli php8.4-dom php8.4-gd \
+    php8.4-mbstring php8.4-curl php8.4-xml php8.4-sqlite3
 ```
 
 > On Fedora / RHEL the equivalent is
@@ -53,11 +53,11 @@ sudo apt install -y php8.3-cli php8.3-dom php8.3-gd \
 After installing, confirm the version and that the required extensions are loaded:
 
 ```bash
-php -v                      # should report 8.3 or newer
+php -v                      # should report 8.4 or newer
 php -m | grep -E 'dom|gd'   # both "dom" and "gd" should be listed
 ```
 
-If an extension is missing, install its package (e.g. `php8.3-gd`) and re-run the
+If an extension is missing, install its package (e.g. `php8.4-gd`) and re-run the
 check — no PHP reconfiguration is needed.
 
 ## Local Setup
