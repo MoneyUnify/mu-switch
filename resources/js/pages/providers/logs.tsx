@@ -43,11 +43,18 @@ interface ProviderLogsProps {
 }
 
 function statusClasses(status: number | null, failed: boolean): string {
-    if (failed || status === null) return 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400';
+    if (failed) return 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400';
+    // No response yet — the call was initiated but never completed (e.g. interrupted).
+    if (status === null) return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400';
     if (status < 300) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400';
     if (status < 400) return 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400';
     if (status < 500) return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400';
     return 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400';
+}
+
+function statusLabel(status: number | null, failed: boolean): string {
+    if (status !== null) return String(status);
+    return failed ? 'ERR' : 'sent';
 }
 
 function methodClasses(method: string): string {
@@ -208,7 +215,7 @@ export default function ProviderLogs({ provider, logs: page, stats }: ProviderLo
                                             </td>
                                             <td className="px-5 py-3">
                                                 <span className={cn('inline-flex rounded-md px-2 py-0.5 text-xs font-medium tabular-nums', statusClasses(log.status, log.failed))}>
-                                                    {log.status ?? 'ERR'}
+                                                    {statusLabel(log.status, log.failed)}
                                                 </span>
                                             </td>
                                             <td className="px-5 py-3 text-right tabular-nums text-neutral-500 dark:text-neutral-400">
@@ -282,7 +289,7 @@ export default function ProviderLogs({ provider, logs: page, stats }: ProviderLo
                         <div className="-mr-2 flex-1 space-y-4 overflow-x-hidden overflow-y-auto pr-2">
                             <div className="flex flex-wrap items-center gap-2">
                                 <span className={cn('inline-flex rounded-md px-2 py-0.5 text-xs font-medium', statusClasses(selected.status, selected.failed))}>
-                                    {selected.status !== null ? `HTTP ${selected.status}` : 'No response'}
+                                    {selected.status !== null ? `HTTP ${selected.status}` : selected.failed ? 'No response' : 'Sent · awaiting response'}
                                 </span>
                             </div>
 

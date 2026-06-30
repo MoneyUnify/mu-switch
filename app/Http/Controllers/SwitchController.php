@@ -64,6 +64,12 @@ class SwitchController extends Controller
         //    config error, or an exception (e.g. failed authentication or an
         //    unreachable gateway). One provider's failure must never abort the
         //    chain while another could still process the request.
+        //
+        //    Deliberately NO total time bound: this is a financial routing
+        //    switch, and abandoning a provider that merely responded slowly (it
+        //    may already have initiated the collection) to re-route to another
+        //    risks billing the customer twice. We only ever move on when a
+        //    provider definitively did not take the payment.
         $lastError = null;
 
         foreach ($filteredProviders as $provider) {

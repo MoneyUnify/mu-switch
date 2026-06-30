@@ -51,6 +51,37 @@ test('outgoing provider calls are logged against the provider', function () {
     expect($collection->user_id)->toBe($user->id);
 });
 
+test('a provider call is logged at initiation, before its response is recorded', function () {
+    $user = User::factory()->create(['api_token' => 'log-initiated']);
+    loggedAirtelProvider($user);
+
+    $initiatedRowSeen = false;
+
+    Http::fake([
+        // This closure runs after the request has been sent (RequestSending has
+        // fired) but before its ResponseReceived — so an initiated row must exist.
+        '*/auth/oauth2/token' => function () use (&$initiatedRowSeen) {
+            $initiatedRowSeen = ProviderLog::whereNull('response_status')->where('failed', false)->exists();
+
+            return Http::response(['access_token' => 'tok-123', 'expires_in' => 3600], 200);
+        },
+        '*/merchant/v1/payments/' => Http::response([
+            'data' => ['transaction' => ['id' => 'AIRTEL-1', 'status' => 'TIP']],
+            'status' => ['success' => true],
+        ], 200),
+    ]);
+
+    $this->withToken('log-initiated')
+        ->postJson('/api/v1/payment/request', ['amount' => 30, 'account_number' => '0977123456', 'country' => 'ZM'])
+        ->assertOk();
+
+    // The call was written before its response came back...
+    expect($initiatedRowSeen)->toBeTrue();
+    // ...and was then updated in place (no duplicate, no dangling initiated rows).
+    expect(ProviderLog::count())->toBe(2);
+    expect(ProviderLog::whereNull('response_status')->where('failed', false)->count())->toBe(0);
+});
+
 test('sensitive credentials are redacted in provider logs', function () {
     $user = User::factory()->create(['api_token' => 'log-redact']);
     loggedAirtelProvider($user);
