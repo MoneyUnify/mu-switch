@@ -1,5 +1,16 @@
 <?php
 
+use Illuminate\Support\Facades\Artisan;
+
+// The /docs routes read from a file-based Prezet index (database/prezet.sqlite),
+// which is built by `docs:index` rather than the test migrations. Build it once
+// if it is missing (CI, a fresh clone) so the docs pages render instead of 500.
+beforeEach(function () {
+    if (! file_exists(base_path('database/prezet.sqlite'))) {
+        Artisan::call('docs:index', ['--fresh' => true]);
+    }
+});
+
 test('the documentation index is served under /docs', function () {
     $this->get('/docs')
         ->assertOk()
