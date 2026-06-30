@@ -35,6 +35,8 @@ class Market
         'NG' => ['name' => 'Nigeria', 'currency' => 'NGN', 'calling_code' => '234'],
         'KE' => ['name' => 'Kenya', 'currency' => 'KES', 'calling_code' => '254'],
         'TZ' => ['name' => 'Tanzania', 'currency' => 'TZS', 'calling_code' => '255'],
+        'MZ' => ['name' => 'Mozambique', 'currency' => 'MZN', 'calling_code' => '258'],
+        'LS' => ['name' => 'Lesotho', 'currency' => 'LSL', 'calling_code' => '266'],
         'MG' => ['name' => 'Madagascar', 'currency' => 'MGA', 'calling_code' => '261'],
         'SC' => ['name' => 'Seychelles', 'currency' => 'SCR', 'calling_code' => '248'],
         'ZA' => ['name' => 'South Africa', 'currency' => 'ZAR', 'calling_code' => '27'],

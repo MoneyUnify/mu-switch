@@ -125,6 +125,71 @@ the status (`Pending` → pending, `Successful` → success, `Failed` → failed
 To enable it, add a provider in the dashboard, choose the **Lipila** driver,
 paste your API key, and tick Zambia.
 
+## Built-in driver: M-Pesa (Kenya)
+
+The platform ships an **M-Pesa (Kenya)** driver (`MpesaController`) for Safaricom
+**Daraja STK Push** (M-Pesa Express / Lipa Na M-Pesa Online) — a push-to-pay
+prompt the customer approves with their PIN. Daraja uses OAuth
+client-credentials, so you provide:
+
+| Credential | Description |
+| --- | --- |
+| **Consumer Key** | Your Daraja app consumer key. |
+| **Consumer Secret** | Your Daraja app consumer secret. |
+| **Business Short Code** | Your Paybill number (`BusinessShortCode`). |
+| **Lipa Na M-Pesa Passkey** | The online passkey for that shortcode. |
+
+The driver exchanges the key/secret for a short-lived **bearer token** (cached),
+builds the timestamped `base64(Shortcode + Passkey + Timestamp)` password, and
+calls `POST /mpesa/stkpush/v1/processrequest` against
+`https://api.safaricom.co.ke`. The collection starts **pending** while the payer
+enters their PIN; verification re-checks it with `POST /mpesa/stkpushquery/v1/query`
+(`ResultCode 0` → success, `1032`/`1037`/… → failed, *still processing* → pending).
+
+> M-Pesa (Kenya) is Safaricom-only and serves **Kenya** (`KE` / `KES`). It uses
+> the **Paybill** transaction type (`CustomerPayBillOnline`).
+
+To enable it, add a provider in the dashboard, choose the **M-Pesa (Kenya)**
+driver, paste the four credentials above, and tick Kenya.
+
+## Built-in driver: M-Pesa (Vodafone/Vodacom)
+
+Outside Kenya, M-Pesa runs on Vodafone/Vodacom's **M-Pesa Open API** (G2,
+`openapi.m-pesa.com`). The **M-Pesa (Vodafone/Vodacom)** driver
+(`MpesaVodacomController`) does a C2B "single stage" push across those markets.
+Authentication is a two-step RSA handshake, so you provide:
+
+| Credential | Description |
+| --- | --- |
+| **API Key** | Your application's API key from the Open API portal. |
+| **Public Key** | The Open API platform public key (used to encrypt the above). |
+| **Service Provider Code** | Your shortcode (`input_ServiceProviderCode`). |
+
+The driver RSA-encrypts the API key with the public key to fetch a **Session ID**
+(`/getSession/`), re-encrypts that Session ID as the bearer for the push
+(`/c2bPayment/singleStage/`), and verifies via `/queryTransactionStatus/`
+(`Completed` → success, `Failed` → failed). The session is cached until shortly
+before it expires.
+
+Each market's path segment, country code and currency are derived from the
+request country and live in the driver's `MARKETS` map:
+
+| Country | Market segment | Currency |
+| --- | --- | --- |
+| Tanzania (`TZ`) | `vodacomTZN` | `TZS` |
+| Ghana (`GH`) | `vodafoneGHA` | `GHS` |
+| Mozambique (`MZ`) | `vodafoneMOZ` | `MZN` |
+| Lesotho (`LS`) | `vodacomLES` | `LSL` |
+| DR Congo (`CD`) | `vodacomDRC` | `USD` |
+
+> Confirm your market's exact segment on the M-Pesa Open API portal before going
+> live; the `MARKETS` map in `MpesaVodacomController` is the single place to add
+> or correct a market.
+
+To enable it, add a provider in the dashboard, choose the **M-Pesa
+(Vodafone/Vodacom)** driver, paste the three credentials above, and tick the
+markets you serve.
+
 ## Adding your own driver
 
 Drivers are plain classes in `app/Http/Controllers/Providers` that implement
