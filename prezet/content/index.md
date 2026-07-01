@@ -11,6 +11,41 @@ each request across the payment providers you have configured — automatically
 falling back to the next provider when one is unavailable or declines the
 transaction.
 
+## What does MoneyUnify do?
+
+Think of it like a **universal adapter for mobile money and cards**. Normally, to
+collect payments you have to plug into each provider separately — MTN, Airtel,
+M-Pesa, Lenco, and so on — and manage them all yourself. MoneyUnify is the single
+socket you plug into once: you ask it to collect money from a customer, and it
+decides which provider to use behind the scenes. If one provider is down or
+declines, it automatically tries the next until the payment goes through. One
+connection, all providers.
+
+That also fixes the everyday frustration of **failed payments**. Instead of your
+app talking to a single provider and getting stuck when that provider is having a
+bad day, it talks to one system that quietly routes each payment across several
+providers, falling back instantly when one fails — so more payments succeed on
+the first try. Every attempt is recorded in one dashboard, so you always know
+what happened and why: fewer failed payments, less reconciliation headache.
+
+It is **multi-currency and multi-country** by design. Providers advertise the
+markets they serve, and the switch routes each request to a provider that can
+settle it in the right country and currency. Cross-currency flows are treated as
+first-class: every transaction records whether it crossed currencies and the FX
+rate applied, so ongoing foreign-exchange movements are tracked and reconciled
+correctly rather than silently lost — a foundation for collecting in one currency
+and settling in another as your markets grow.
+
+**Provision payment gateways and power multi-region apps from one endpoint.**
+Because everything sits behind a single API — `POST /api/v1/payment/request` —
+MoneyUnify can act as your payment-gateway layer: point any application or website
+at that one endpoint, and add, remove, or re-order the underlying providers from
+the dashboard without touching a line of your code. That makes it a practical way
+to roll out payments across several countries at once — a fintech offering "pay
+with mobile money" across markets, a SaaS billing customers across regions, or an
+e-commerce checkout that needs MTN in one country and M-Pesa in another — all
+through the same integration.
+
 ## Why a switch?
 
 Mobile-money and card providers fail, throttle, or lack coverage in certain
