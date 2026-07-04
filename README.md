@@ -2,6 +2,21 @@
 
 ![MoneyUnify Logo](public/moneyunify-logo-horizontal.png)
 
+## Table of Contents
+
+- [Introduction and Objective](#introduction-and-objective)
+  - [What does MoneyUnify do?](#what-does-moneyunify-do)
+  - [Documentation](#documentation)
+- [Requirements](#requirements)
+  - [Installing PHP and its extensions](#installing-php-and-its-extensions)
+- [Local Setup](#local-setup)
+- [Documentation Site (`/docs`)](#documentation-site-docs)
+- [API Documentation & Consumption](#api-documentation--consumption)
+- [Authors](#authors)
+- [Contributing](#contributing)
+- [Show Your Support](#show-your-support)
+- [License](#license)
+
 ## Introduction and Objective
 
 MoneyUnify Switch is a source-available, unified payment switch API platform designed to orchestrate payment provider integrations, manage customer accounts, and process transaction flows from a centralized dashboard. The platform provides a standardized interface for multiple payment gateways, allowing applications to initiate collections and automatically failover/retry across configured providers sequentially without modifying core business logic.
