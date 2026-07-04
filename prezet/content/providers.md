@@ -259,6 +259,36 @@ To enable it, add a provider in the dashboard, choose the **Ting by Cellulant**
 driver, paste the four credentials above, tick the markets you serve, and enter
 each market's operator payment-option code.
 
+## Built-in driver: Flutterwave
+
+The platform ships a **Flutterwave** driver (`FlutterwaveController`) for v3
+**mobile-money collections** (push to pay) across Flutterwave's markets:
+**Kenya** (M-Pesa), **Ghana**, **Uganda**, **Rwanda**, **Zambia**, **Tanzania**,
+and francophone **Cameroon** and **Côte d'Ivoire**. Flutterwave authenticates
+with a single Bearer secret key, so you provide:
+
+| Credential | Description |
+| --- | --- |
+| **Secret Key** | Your Flutterwave secret key (`FLWSECK-…`). |
+
+The driver charges the right endpoint for each market — `POST
+/v3/charges?type=…` (`mpesa` for Kenya, `mobile_money_ghana`,
+`mobile_money_uganda`, `mobile_money_rwanda`, `mobile_money_zambia`,
+`mobile_money_tanzania`, or `mobile_money_franco`) — deriving the `type`,
+currency, and E.164 MSISDN from the request's country. The collection starts
+**pending**; verification calls `GET /v3/transactions/{id}/verify`
+(`successful` → success, `failed` → failed, otherwise pending). As with every
+provider, a call needs only the country, phone number, and amount — the customer
+name/email default when not supplied.
+
+> **Networks (Ghana, Uganda, Zambia).** Flutterwave requires the mobile operator
+> for these markets. The driver picks it from the caller's optional `network`
+> field, otherwise infers it from the phone number's dialling prefix (e.g. a
+> Ghana `024…` number → MTN), falling back to the market's primary operator.
+
+To enable it, add a provider in the dashboard, choose the **Flutterwave**
+driver, paste your secret key, and tick the markets you serve.
+
 ## Adding your own driver
 
 Drivers are plain classes in `app/Http/Controllers/Providers` that implement
