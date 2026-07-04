@@ -8,6 +8,8 @@ use App\Models\Transaction;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator as BasePaginator;
+use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
@@ -24,6 +26,13 @@ class DashboardController extends Controller
      * Number of days rendered in the volume trend chart.
      */
     private const TREND_DAYS = 14;
+
+    /**
+     * Selectable page sizes for the dashboard tables (first entry is default).
+     *
+     * @var list<int>
+     */
+    private const PER_PAGE_OPTIONS = [5, 10, 25, 50];
 
     /**
      * Render the payment switch operations dashboard.
@@ -46,11 +55,18 @@ class DashboardController extends Controller
             'stats' => $this->stats($providerIds, $periodStart, $previousStart, $providers),
             'volumeTrend' => $this->volumeTrend($providerIds),
             'statusBreakdown' => $this->statusBreakdown($providerIds, $periodStart),
-            'providerPerformance' => $this->providerPerformance($providers, $providerIds, $periodStart),
+            'providerPerformance' => $this->providerPerformance($providers, $providerIds, $periodStart, $request),
             'recentTransactions' => $this->recentTransactions($providerIds, $request),
             'transactionFilters' => [
                 'q' => trim($request->string('tx')->toString()) ?: null,
             ],
+            'providerFilters' => [
+                'q' => trim($request->string('pq')->toString()) ?: null,
+                'status' => in_array($request->string('pstatus')->toString(), ['active', 'inactive'], true)
+                    ? $request->string('pstatus')->toString()
+                    : null,
+            ],
+            'perPageOptions' => self::PER_PAGE_OPTIONS,
         ]);
     }
 
@@ -179,13 +195,12 @@ class DashboardController extends Controller
     }
 
     /**
-     * Per-provider reliability and throughput metrics.
+     * Per-provider reliability and throughput metrics, paginated.
      *
      * @param  Collection<int, PaymentProvider>  $providers
      * @param  Collection<int, int>  $providerIds
-     * @return list<array<string, mixed>>
      */
-    private function providerPerformance(Collection $providers, Collection $providerIds, Carbon $periodStart): array
+    private function providerPerformance(Collection $providers, Collection $providerIds, Carbon $periodStart, Request $request): LengthAwarePaginator
     {
         $stats = Transaction::query()
             ->whereIn('payment_provider_id', $providerIds)
@@ -201,7 +216,16 @@ class DashboardController extends Controller
             ->get()
             ->keyBy('payment_provider_id');
 
-        return $providers
+        $search = trim($request->string('pq')->toString());
+        $status = $request->string('pstatus')->toString();
+
+        $rows = $providers
+            ->when($search !== '', fn (Collection $c): Collection => $c->filter(
+                fn (PaymentProvider $p): bool => str_contains(mb_strtolower($p->name), mb_strtolower($search)),
+            ))
+            ->when(in_array($status, ['active', 'inactive'], true), fn (Collection $c): Collection => $c->filter(
+                fn (PaymentProvider $p): bool => $p->is_active === ($status === 'active'),
+            ))
             ->map(function ($provider) use ($stats): array {
                 $row = $stats->get($provider->id);
                 $total = (int) ($row->total ?? 0);
@@ -223,8 +247,43 @@ class DashboardController extends Controller
                 ];
             })
             ->sortByDesc('total')
-            ->values()
-            ->all();
+            ->values();
+
+        return $this->paginateCollection($rows, $request, 'providers', 'provPer');
+    }
+
+    /**
+     * Paginate an in-memory collection with a length-aware paginator that keeps
+     * the current query string (so both dashboard tables page independently).
+     *
+     * @param  Collection<int, mixed>  $items
+     */
+    private function paginateCollection(Collection $items, Request $request, string $pageName, string $perPageKey): LengthAwarePaginator
+    {
+        $perPage = $this->perPage($request, $perPageKey);
+        $page = Paginator::resolveCurrentPage($pageName);
+
+        return new BasePaginator(
+            $items->forPage($page, $perPage)->values(),
+            $items->count(),
+            $perPage,
+            $page,
+            [
+                'path' => Paginator::resolveCurrentPath(),
+                'pageName' => $pageName,
+            ],
+        )->withQueryString();
+    }
+
+    /**
+     * The requested page size for a table, whitelisted, defaulting to the first
+     * PER_PAGE_OPTIONS entry (5).
+     */
+    private function perPage(Request $request, string $key): int
+    {
+        $perPage = (int) $request->integer($key);
+
+        return in_array($perPage, self::PER_PAGE_OPTIONS, true) ? $perPage : self::PER_PAGE_OPTIONS[0];
     }
 
     /**
@@ -251,7 +310,7 @@ class DashboardController extends Controller
                 });
             })
             ->latest()
-            ->paginate(10, ['*'], 'txns')
+            ->paginate($this->perPage($request, 'txnPer'), ['*'], 'txns')
             ->withQueryString()
             ->through(fn (Transaction $transaction): array => [
                 'id' => $transaction->id,
