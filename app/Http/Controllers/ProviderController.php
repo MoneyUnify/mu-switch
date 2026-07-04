@@ -10,6 +10,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -48,6 +49,8 @@ class ProviderController extends Controller
                         'default_logo' => defined($className.'::DEFAULT_LOGO') ? $className::DEFAULT_LOGO : null,
                         // The credential inputs the dashboard should render for this driver.
                         'config_fields' => $this->configFieldsFor($className),
+                        // Optional per-market input (e.g. an operator code for each ticked country).
+                        'market_field' => $this->marketFieldFor($className),
                     ];
                 }
             }
@@ -131,6 +134,7 @@ class ProviderController extends Controller
 
         $config = $validated['config'];
         $config['supported_countries'] = array_values($validated['supported_countries']);
+        $this->applyMarketValues($config, $request, $validated['class'], $validated['supported_countries']);
 
         $request->user()->paymentProviders()->create([
             'name' => $validated['name'],
@@ -180,6 +184,7 @@ class ProviderController extends Controller
         }
 
         $config['supported_countries'] = array_values($validated['supported_countries']);
+        $this->applyMarketValues($config, $request, $validated['class'], $validated['supported_countries']);
 
         $provider->update([
             'name' => $validated['name'],
@@ -190,6 +195,45 @@ class ProviderController extends Controller
         ]);
 
         return redirect()->route('providers.index');
+    }
+
+    /**
+     * The optional per-market field a driver collects for each ticked country
+     * (e.g. Ting's operator payment-option code), or null.
+     *
+     * @return array{key: string, label: string, placeholder?: string}|null
+     */
+    private function marketFieldFor(string $className): ?array
+    {
+        return $className !== '' && defined($className.'::MARKET_FIELD') ? $className::MARKET_FIELD : null;
+    }
+
+    /**
+     * Persist the per-market values (one per ticked country) into the config,
+     * requiring a value for every ticked market when the driver declares one.
+     *
+     * @param  array<string, mixed>  $config
+     * @param  list<string>  $supportedCountries
+     */
+    private function applyMarketValues(array &$config, Request $request, string $class, array $supportedCountries): void
+    {
+        $marketField = $this->marketFieldFor($class);
+        if (! $marketField) {
+            return;
+        }
+
+        $values = [];
+        foreach ($supportedCountries as $country) {
+            $value = trim((string) $request->input("market_values.{$country}", ''));
+            if ($value === '') {
+                throw ValidationException::withMessages([
+                    "market_values.{$country}" => "A {$marketField['label']} is required for {$country}.",
+                ]);
+            }
+            $values[$country] = $value;
+        }
+
+        $config[$marketField['key']] = $values;
     }
 
     /**
@@ -244,6 +288,12 @@ class ProviderController extends Controller
                 if (($field['type'] ?? '') !== 'password') {
                     $safe[$field['key']] = $config[$field['key']] ?? null;
                 }
+            }
+
+            // Per-market values (e.g. operator codes) are not secret — send them
+            // so the edit form can pre-fill each market's input.
+            if ($marketField = $this->marketFieldFor($provider->class)) {
+                $safe[$marketField['key']] = $config[$marketField['key']] ?? [];
             }
 
             $provider->setAttribute('config', $safe);

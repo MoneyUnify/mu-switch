@@ -208,10 +208,23 @@ class ProviderCallLogger
             return $this->truncate((string) json_encode($this->redactBody($decoded)));
         }
 
-        // Non-JSON (e.g. form or empty) body — store as-is, truncated.
         $body = $request->body();
 
-        return $body === '' ? null : $this->truncate($body);
+        if ($body === '') {
+            return null;
+        }
+
+        // XML (e.g. SOAP) body — blank out password-like elements (such as a
+        // WS-Security <wsse:Password>) before persisting.
+        if (str_starts_with(ltrim($body), '<')) {
+            $body = (string) preg_replace(
+                '/(<([\w.-]*:)?([\w.-]*password[\w.-]*)\b[^>]*>).*?(<\/\2?\3>)/is',
+                '$1[REDACTED]$4',
+                $body,
+            );
+        }
+
+        return $this->truncate($body);
     }
 
     /**

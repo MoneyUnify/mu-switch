@@ -190,6 +190,75 @@ To enable it, add a provider in the dashboard, choose the **M-Pesa
 (Vodafone/Vodacom)** driver, paste the three credentials above, and tick the
 markets you serve.
 
+## Built-in driver: cGrate (Konse Konse 543)
+
+The platform ships a **cGrate** driver (`CgrateController`) for mobile-money
+collections in Zambia through cGrate's **Konse Konse (543)** merchant service —
+covering MTN, Airtel, and Zamtel wallets. cGrate's Konik web service is
+**SOAP/WSDL** (`https://543.cgrate.co.zm/Konik/KonikWs?wsdl`) secured with a
+WS-Security UsernameToken, so you provide:
+
+| Credential | Description |
+| --- | --- |
+| **API Username** | Your cGrate account username (WS-Security UsernameToken). |
+| **API Password** | Your cGrate account password. |
+
+The driver builds the SOAP envelopes itself and posts them over HTTPS — no
+`php-soap` extension required — so cGrate calls appear in the provider call
+logs like every other gateway (with the password redacted).
+
+A distinctive behaviour to know: cGrate's `processCustomerPayment` is
+**synchronous** — the payer confirms the USSD prompt while the call is held
+open. A `responseCode` of `0` therefore means the payment **completed** (the
+API response reports `status: success` immediately), while `8` means it is
+still processing (reported as `pending` — re-check it with the
+[verify endpoint](/docs/api/verify-payment), which maps cGrate's
+`queryCustomerPayment` result onto the final status).
+
+To enable it, add a provider in the dashboard, choose the **cGrate (Konse
+Konse 543)** driver, paste your username and password, and tick Zambia.
+
+## Built-in driver: Ting by Cellulant
+
+The platform ships a **Ting** driver (`TingController`) for **Tingg by
+Cellulant** — a pan-African gateway covering roughly **25 markets** across East,
+West, and Central Africa. Tingg's Checkout API (v3) authenticates with OAuth
+client-credentials plus an API-key header, so you provide:
+
+| Credential | Description |
+| --- | --- |
+| **API Key** | Your Tingg `apiKey` (sent as a header on every call). |
+| **Client ID** | Your OAuth client id. |
+| **Client Secret** | Your OAuth client secret. |
+| **Service Code** | Your registered Tingg service code (identifies the biller). |
+
+The driver exchanges the Client ID/Secret for a short-lived **bearer token**
+(cached), then calls Tingg's combined **`checkout-charge`** endpoint with
+`is_offline: true` to push an **STK/USSD prompt straight to the payer's
+handset** — no hosted payment link, exactly like the other push-to-pay
+providers. The collection starts **pending**; verification calls Tingg's query
+endpoint (`request_status_code` `178` → success, `99`/`129` → failed, otherwise
+pending). Just as with every provider, a call needs only the **country**,
+**phone number**, and amount — the customer name defaults to an unnamed customer
+when not supplied.
+
+Country codes are sent in ISO **alpha-3** form (e.g. `KE → KEN`), derived from
+the central `App\Support\Market` registry along with the currency and E.164
+MSISDN.
+
+> **Per-market operator codes.** Tingg routes the STK prompt to a specific
+> mobile-money operator by a code it assigns per operator (e.g. `SAFKE` for
+> Safaricom Kenya, `VODACOMTZ` for Vodacom Tanzania) — there is no derivable
+> global standard. So **one Ting provider can serve many markets**: when you tick
+> a market in the provider dialog, an input appears to enter that market's
+> **Payment Option Code**. At request time the switch picks the code for the
+> request's `country`. Get each code from your Tingg dashboard (Fetch Payment
+> Options).
+
+To enable it, add a provider in the dashboard, choose the **Ting by Cellulant**
+driver, paste the four credentials above, tick the markets you serve, and enter
+each market's operator payment-option code.
+
 ## Adding your own driver
 
 Drivers are plain classes in `app/Http/Controllers/Providers` that implement

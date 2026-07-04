@@ -74,6 +74,42 @@ test('user can create a payment provider', function () {
     ]);
 });
 
+test('creating a provider with a per-market field stores a value for each ticked market', function () {
+    $user = User::factory()->create();
+
+    $response = $this->actingAs($user)
+        ->post(route('providers.store'), [
+            'name' => 'Ting Multi',
+            'class' => 'App\\Http\\Controllers\\Providers\\TingController',
+            'config' => ['api_key' => 'k', 'client_id' => 'c', 'client_secret' => 's', 'service_code' => 'MU'],
+            'supported_countries' => ['KE', 'TZ'],
+            'market_values' => ['KE' => 'SAFKE', 'TZ' => 'VODACOMTZ'],
+            'is_active' => 1,
+        ]);
+
+    $response->assertRedirect(route('providers.index'));
+
+    $provider = PaymentProvider::where('name', 'Ting Multi')->first();
+    expect($provider->config['payment_option_codes'])->toBe(['KE' => 'SAFKE', 'TZ' => 'VODACOMTZ']);
+});
+
+test('creating a per-market provider fails when a ticked market has no value', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->post(route('providers.store'), [
+            'name' => 'Ting Missing',
+            'class' => 'App\\Http\\Controllers\\Providers\\TingController',
+            'config' => ['api_key' => 'k', 'client_id' => 'c', 'client_secret' => 's', 'service_code' => 'MU'],
+            'supported_countries' => ['KE', 'TZ'],
+            'market_values' => ['KE' => 'SAFKE'], // TZ missing
+            'is_active' => 1,
+        ])
+        ->assertSessionHasErrors('market_values.TZ');
+
+    $this->assertDatabaseMissing('payment_providers', ['name' => 'Ting Missing']);
+});
+
 test('user can update their own payment provider', function () {
     $user = User::factory()->create();
     $provider = PaymentProvider::create([

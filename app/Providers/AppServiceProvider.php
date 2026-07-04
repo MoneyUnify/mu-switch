@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Prezet\Prezet\Actions\GetHeadings;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -21,7 +22,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Use our heading extractor so the docs "On this page" ids match the
+        // in-body anchor ids (otherwise punctuated headings don't scroll).
+        $this->app->bind(
+            GetHeadings::class,
+            \App\Support\Prezet\GetHeadings::class,
+        );
     }
 
     /**
