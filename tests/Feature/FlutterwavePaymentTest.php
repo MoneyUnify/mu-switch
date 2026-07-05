@@ -90,6 +90,23 @@ test('the flutterwave driver sends the country for francophone markets', functio
         && $request['currency'] === 'XOF');
 });
 
+test('the flutterwave driver supports Senegal via the franco endpoint', function () {
+    $user = User::factory()->create(['api_token' => 'flw-sn']);
+    flutterwaveProvider($user, ['SN']);
+
+    Http::fake(flwChargeOk());
+
+    $this->withToken('flw-sn')
+        ->postJson('/api/v1/payment/request', ['amount' => 2000, 'account_number' => '0770000000', 'country' => 'SN'])
+        ->assertOk();
+
+    $this->assertDatabaseHas('transactions', ['currency' => 'XOF', 'country' => 'SN']);
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/v3/charges?type=mobile_money_franco')
+        && $request['country'] === 'SN'
+        && $request['currency'] === 'XOF');
+});
+
 test('the flutterwave driver surfaces a declined charge as an error', function () {
     $user = User::factory()->create(['api_token' => 'flw-fail']);
     flutterwaveProvider($user, ['KE']);

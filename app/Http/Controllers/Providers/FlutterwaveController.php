@@ -48,6 +48,8 @@ class FlutterwaveController extends Controller implements PaymentProviderInterfa
         'TZ' => ['type' => 'mobile_money_tanzania', 'network' => [], 'franco' => false],
         'CM' => ['type' => 'mobile_money_franco', 'network' => [], 'franco' => true],
         'CI' => ['type' => 'mobile_money_franco', 'network' => [], 'franco' => true],
+        'SN' => ['type' => 'mobile_money_franco', 'network' => [], 'franco' => true],
+        'BF' => ['type' => 'mobile_money_franco', 'network' => [], 'franco' => true],
     ];
 
     /**
@@ -76,7 +78,7 @@ class FlutterwaveController extends Controller implements PaymentProviderInterfa
     /**
      * Markets Flutterwave mobile money can serve (selectable in the dashboard).
      */
-    public const SUPPORTED_COUNTRIES = ['KE', 'GH', 'UG', 'RW', 'ZM', 'TZ', 'CM', 'CI'];
+    public const SUPPORTED_COUNTRIES = ['KE', 'GH', 'UG', 'RW', 'ZM', 'TZ', 'CM', 'CI', 'SN', 'BF'];
 
     public const DEFAULT_COUNTRIES = 'KE';
 

@@ -264,8 +264,9 @@ each market's operator payment-option code.
 The platform ships a **Flutterwave** driver (`FlutterwaveController`) for v3
 **mobile-money collections** (push to pay) across Flutterwave's markets:
 **Kenya** (M-Pesa), **Ghana**, **Uganda**, **Rwanda**, **Zambia**, **Tanzania**,
-and francophone **Cameroon** and **Côte d'Ivoire**. Flutterwave authenticates
-with a single Bearer secret key, so you provide:
+and francophone **Cameroon**, **Côte d'Ivoire**, **Senegal** and **Burkina
+Faso**. Flutterwave authenticates with a single Bearer secret key, so you
+provide:
 
 | Credential | Description |
 | --- | --- |
@@ -288,6 +289,36 @@ name/email default when not supplied.
 
 To enable it, add a provider in the dashboard, choose the **Flutterwave**
 driver, paste your secret key, and tick the markets you serve.
+
+## Built-in driver: pawaPay
+
+The platform ships a **pawaPay** driver (`PawapayController`) for mobile-money
+collections ("deposits") across **pawaPay's official 20 markets**: Benin,
+Burkina Faso, Cameroon, Congo-Brazzaville, DR Congo, Côte d'Ivoire, Ethiopia,
+Gabon, Ghana, Kenya, Lesotho, Malawi, Mozambique, Nigeria, Rwanda, Senegal,
+Sierra Leone, Tanzania, Uganda and Zambia. pawaPay authenticates with a single
+Bearer API token, so you provide:
+
+| Credential | Description |
+| --- | --- |
+| **API Token** | Your pawaPay API token (sent as `Authorization: Bearer …`). |
+
+For each collection the driver first calls pawaPay's **predict-correspondent**
+endpoint to determine which mobile-money operator ("correspondent", e.g.
+`MTN_MOMO_ZMB`) the payer's number belongs to, then initiates the deposit
+(`POST /deposits`) — which sends an **STK/USSD push straight to the payer's
+handset**. The collection starts **pending** (status `ACCEPTED`); verification
+polls the deposit status (`GET /deposits/{depositId}` → `COMPLETED` → success,
+`FAILED` → failed, otherwise pending). As with every provider, a call needs only
+the country, phone number and amount.
+
+> **Operator selection.** pawaPay routes to a specific operator by its
+> correspondent code. The driver derives it automatically from the phone number
+> (pawaPay's own prediction), so no per-market configuration is needed; a caller
+> may still pass an explicit `correspondent` to override it.
+
+To enable it, add a provider in the dashboard, choose the **pawaPay** driver,
+paste your API token, and tick the markets you serve.
 
 ## Adding your own driver
 

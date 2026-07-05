@@ -42,6 +42,10 @@ class Market
         'ZA' => ['name' => 'South Africa', 'currency' => 'ZAR', 'calling_code' => '27', 'alpha3' => 'ZAF'],
         'SZ' => ['name' => 'Eswatini', 'currency' => 'SZL', 'calling_code' => '268', 'alpha3' => 'SWZ'],
         'SS' => ['name' => 'South Sudan', 'currency' => 'SSP', 'calling_code' => '211', 'alpha3' => 'SSD'],
+        'SN' => ['name' => 'Senegal', 'currency' => 'XOF', 'calling_code' => '221', 'alpha3' => 'SEN'],
+        'BF' => ['name' => 'Burkina Faso', 'currency' => 'XOF', 'calling_code' => '226', 'alpha3' => 'BFA'],
+        'SL' => ['name' => 'Sierra Leone', 'currency' => 'SLE', 'calling_code' => '232', 'alpha3' => 'SLE'],
+        'ET' => ['name' => 'Ethiopia', 'currency' => 'ETB', 'calling_code' => '251', 'alpha3' => 'ETH'],
     ];
 
     /**
