@@ -50,6 +50,14 @@ class LipilaController extends Controller implements PaymentProviderInterface
     ];
 
     /**
+     * Lipila's fees: 2.5% on collections, K5 to settle K1–K1000.
+     */
+    public const FEE_SCHEDULE = [
+        'collection' => ['percent' => 2.5, 'flat' => 0.0],
+        'settlement' => ['tiers' => [['max' => 1000, 'fee' => 5.0]], 'default' => 5.0],
+    ];
+
+    /**
      * Lipila production host.
      */
     private const BASE_URL = 'https://blz.lipila.io';

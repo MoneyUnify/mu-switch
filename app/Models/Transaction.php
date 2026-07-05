@@ -3,8 +3,11 @@
 namespace App\Models;
 
 use App\Enums\TransactionStatus;
+use App\Observers\TransactionObserver;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Model;
 
+#[ObservedBy(TransactionObserver::class)]
 class Transaction extends Model
 {
     protected $fillable = [
@@ -20,6 +23,10 @@ class Transaction extends Model
         'direction',
         'is_fx',
         'fx_rate',
+        'collection_fee',
+        'settlement_fee',
+        'net_amount',
+        'fee_estimated',
         'callback_url',
         'callback_notified_at',
     ];
@@ -46,6 +53,11 @@ class Transaction extends Model
     {
         return [
             'status' => TransactionStatus::class,
+            'provider_response' => 'array',
+            'collection_fee' => 'decimal:4',
+            'settlement_fee' => 'decimal:4',
+            'net_amount' => 'decimal:4',
+            'fee_estimated' => 'boolean',
             'callback_notified_at' => 'datetime',
         ];
     }

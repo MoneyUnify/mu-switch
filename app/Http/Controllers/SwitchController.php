@@ -5,11 +5,14 @@ namespace App\Http\Controllers;
 use App\ApiResponse;
 use App\Contracts\PaymentProviderInterface;
 use App\Jobs\SendTransactionCallback;
+use App\Models\PaymentProvider;
 use App\Models\Transaction;
 use App\Support\Market;
 use App\Support\ProviderCallContext;
+use App\Support\ProviderFees;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 
 class SwitchController extends Controller
@@ -57,6 +60,14 @@ class SwitchController extends Controller
 
         if ($filteredProviders->isEmpty()) {
             return ApiResponse::error('No active providers support the requested country', 400);
+        }
+
+        // Under the "cost aware" policy, try the cheapest provider first (by the
+        // total fee it would charge for this amount) so fallback — and any fee
+        // difference — becomes the exception. Providers without a known fee
+        // schedule keep their original order after the priced ones.
+        if ($user && $user->feePolicy() === 'cost_aware') {
+            $filteredProviders = $this->orderByCost($filteredProviders, (float) $request['amount']);
         }
 
         // 2. Iterate through filtered providers sequentially, falling back to the
@@ -125,6 +136,31 @@ class SwitchController extends Controller
         }
 
         return $lastError ?? ApiResponse::error('No provider could process the payment request', 500);
+    }
+
+    /**
+     * Order providers by the total fee they would charge for the amount
+     * (cheapest first). Providers without a fee schedule sort last but keep
+     * their relative order, so pricing never silently drops a usable provider.
+     *
+     * @param  Collection<int, PaymentProvider>  $providers
+     * @return Collection<int, PaymentProvider>
+     */
+    private function orderByCost(Collection $providers, float $amount): Collection
+    {
+        return $providers
+            ->values()
+            ->map(function ($provider, int $index) use ($amount): array {
+                $schedule = ProviderFees::scheduleFor($provider);
+                $cost = $schedule === null
+                    ? INF
+                    : ProviderFees::collectionFee($schedule, $amount) + ProviderFees::settlementFee($schedule, $amount);
+
+                return ['provider' => $provider, 'cost' => $cost, 'index' => $index];
+            })
+            ->sortBy([['cost', 'asc'], ['index', 'asc']])
+            ->pluck('provider')
+            ->values();
     }
 
     /**

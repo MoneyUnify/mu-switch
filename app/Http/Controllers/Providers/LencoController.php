@@ -41,6 +41,14 @@ class LencoController extends Controller implements PaymentProviderInterface
         ['key' => 'api_key', 'label' => 'API Key / Token', 'type' => 'password'],
     ];
 
+    /**
+     * Lenco's fees: 1% on collections, K8.50 to settle K1–K1000.
+     */
+    public const FEE_SCHEDULE = [
+        'collection' => ['percent' => 1.0, 'flat' => 0.0],
+        'settlement' => ['tiers' => [['max' => 1000, 'fee' => 8.5]], 'default' => 8.5],
+    ];
+
     public string $api_key {
         set(string $value) => trim($value);
     }

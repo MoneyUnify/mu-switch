@@ -10,6 +10,9 @@ import {
     FileCode,
     ScrollText,
     Pencil,
+    Wallet,
+    ArrowDownLeft,
+    ArrowUpRight,
 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -37,6 +40,14 @@ import { Badge } from '@/components/ui/badge';
 import providersRoute from '@/routes/providers';
 import { cn } from '@/lib/utils';
 
+interface AccountSummary {
+    currency: string;
+    count: number;
+    inflow: number;
+    outflow: number;
+    net: number;
+}
+
 interface PaymentProvider {
     id: number;
     name: string;
@@ -47,6 +58,19 @@ interface PaymentProvider {
     } | null;
     logo_url: string | null;
     is_active: boolean;
+    accounts: AccountSummary[];
+}
+
+function formatMoney(amount: number, currency: string): string {
+    try {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency,
+            maximumFractionDigits: amount >= 1000 ? 0 : 2,
+        }).format(amount);
+    } catch {
+        return `${currency} ${amount.toLocaleString()}`;
+    }
 }
 
 interface ConfigField {
@@ -141,6 +165,8 @@ export default function Index({
     const [deleteTarget, setDeleteTarget] = useState<PaymentProvider | null>(
         null,
     );
+    const [accountsProvider, setAccountsProvider] =
+        useState<PaymentProvider | null>(null);
     const [selectedDriver, setSelectedDriver] =
         useState<AvailableDriver | null>(null);
 
@@ -538,6 +564,42 @@ export default function Index({
                                             </span>
                                         </span>
                                     </div>
+
+                                    {/* Inflows / outflows (successful transactions, dominant currency) */}
+                                    <div className="grid grid-cols-2 gap-2 border-t border-sidebar-border/30 pt-3 dark:border-sidebar-border/50">
+                                        <div>
+                                            <div className="flex items-center gap-1 text-[11px] text-neutral-400">
+                                                <ArrowDownLeft className="h-3 w-3 text-emerald-500" />{' '}
+                                                Inflows
+                                            </div>
+                                            <div className="text-sm font-semibold tabular-nums">
+                                                {provider.accounts.length > 0
+                                                    ? formatMoney(
+                                                          provider.accounts[0]
+                                                              .inflow,
+                                                          provider.accounts[0]
+                                                              .currency,
+                                                      )
+                                                    : '—'}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-1 text-[11px] text-neutral-400">
+                                                <ArrowUpRight className="h-3 w-3 text-red-500" />{' '}
+                                                Outflows (fees)
+                                            </div>
+                                            <div className="text-sm font-semibold tabular-nums">
+                                                {provider.accounts.length > 0
+                                                    ? formatMoney(
+                                                          provider.accounts[0]
+                                                              .outflow,
+                                                          provider.accounts[0]
+                                                              .currency,
+                                                      )
+                                                    : '—'}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </CardContent>
                                 <CardFooter className="flex justify-end gap-2 border-t border-sidebar-border/30 pt-3 dark:border-sidebar-border/50">
                                     <Button
@@ -555,6 +617,17 @@ export default function Index({
                                             <ScrollText className="h-4 w-4" />{' '}
                                             Call logs
                                         </Link>
+                                    </Button>
+                                    <Button
+                                        variant="soft"
+                                        color="gray"
+                                        size="1"
+                                        onClick={() =>
+                                            setAccountsProvider(provider)
+                                        }
+                                        className="cursor-pointer"
+                                    >
+                                        <Wallet className="h-4 w-4" /> Accounts
                                     </Button>
                                     <Button
                                         variant="outline"
@@ -1049,6 +1122,88 @@ export default function Index({
                     </Flex>
                 </AlertDialog.Content>
             </AlertDialog.Root>
+
+            {/* Accounts overview — successful transactions grouped by currency */}
+            <Dialog
+                open={!!accountsProvider}
+                onOpenChange={(open) => !open && setAccountsProvider(null)}
+            >
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Wallet className="h-4 w-4" />{' '}
+                            {accountsProvider?.name} · Accounts
+                        </DialogTitle>
+                        <DialogDescription>
+                            Total successfully transacted amounts, grouped by
+                            currency.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {accountsProvider &&
+                    accountsProvider.accounts.length === 0 ? (
+                        <div className="py-10 text-center text-sm text-neutral-400">
+                            No successful transactions yet.
+                        </div>
+                    ) : (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            {accountsProvider?.accounts.map((account) => (
+                                <div
+                                    key={account.currency}
+                                    className="rounded-lg border border-sidebar-border/60 p-4 dark:border-sidebar-border"
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm font-semibold">
+                                            {account.currency}
+                                        </span>
+                                        <span className="text-[11px] text-neutral-400 tabular-nums">
+                                            {account.count.toLocaleString()}{' '}
+                                            txns
+                                        </span>
+                                    </div>
+                                    <div className="mt-3 space-y-1.5 text-xs">
+                                        <div className="flex items-center justify-between">
+                                            <span className="flex items-center gap-1 text-neutral-500 dark:text-neutral-400">
+                                                <ArrowDownLeft className="h-3 w-3 text-emerald-500" />{' '}
+                                                Inflows
+                                            </span>
+                                            <span className="font-medium tabular-nums">
+                                                {formatMoney(
+                                                    account.inflow,
+                                                    account.currency,
+                                                )}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="flex items-center gap-1 text-neutral-500 dark:text-neutral-400">
+                                                <ArrowUpRight className="h-3 w-3 text-red-500" />{' '}
+                                                Outflows (fees)
+                                            </span>
+                                            <span className="font-medium tabular-nums">
+                                                {formatMoney(
+                                                    account.outflow,
+                                                    account.currency,
+                                                )}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between border-t border-sidebar-border/50 pt-1.5 dark:border-sidebar-border/70">
+                                            <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                                                Net
+                                            </span>
+                                            <span className="font-semibold tabular-nums">
+                                                {formatMoney(
+                                                    account.net,
+                                                    account.currency,
+                                                )}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
         </>
     );
 }

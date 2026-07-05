@@ -1,6 +1,10 @@
 <?php
 
+use App\Enums\TransactionStatus;
+use App\Http\Controllers\Providers\LencoController;
+use App\Models\Customer;
 use App\Models\PaymentProvider;
+use App\Models\Transaction;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -72,6 +76,50 @@ test('user can create a payment provider', function () {
         'api_key' => 'secret_key',
         'supported_countries' => ['ZM', 'MW'],
     ]);
+});
+
+test('providers expose a per-currency account summary of successful transactions', function () {
+    $user = User::factory()->create();
+    $customer = Customer::create(['name' => 'Jane', 'email' => 'jane-acct@example.com']);
+    $provider = PaymentProvider::create([
+        'user_id' => $user->id,
+        'name' => 'Lenco',
+        'class' => LencoController::class,
+        'config' => ['api_key' => 'k'],
+        'is_active' => true,
+    ]);
+
+    $make = fn (float $amount, string $currency, TransactionStatus $status) => Transaction::create([
+        'transaction_id' => uniqid('t-'),
+        'payment_provider_id' => $provider->id,
+        'provider_transaction_id' => uniqid('p-'),
+        'customer_id' => $customer->id,
+        'amount' => $amount,
+        'currency' => $currency,
+        'country' => 'ZM',
+        'status' => $status,
+        'direction' => 'credit',
+        'is_fx' => false,
+    ]);
+
+    // Two successful ZMW (K750 each: 1% + K8.50 fees → net 734), one successful USD, one failed (ignored).
+    $make(750, 'ZMW', TransactionStatus::SUCCESS);
+    $make(750, 'ZMW', TransactionStatus::SUCCESS);
+    $make(100, 'USD', TransactionStatus::SUCCESS);
+    $make(500, 'ZMW', TransactionStatus::FAILED);
+
+    $this->actingAs($user)
+        ->get(route('providers.index'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('providers.0.accounts', 2)
+            // Ordered by inflow desc → ZMW (1500) first.
+            ->where('providers.0.accounts.0.currency', 'ZMW')
+            ->where('providers.0.accounts.0.inflow', 1500)
+            ->where('providers.0.accounts.0.outflow', 32) // (7.5 + 8.5) * 2
+            ->where('providers.0.accounts.0.net', 1468) // 734 * 2
+            ->where('providers.0.accounts.1.currency', 'USD')
+        );
 });
 
 test('creating a provider with a per-market field stores a value for each ticked market', function () {

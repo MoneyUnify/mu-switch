@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Contracts\PaymentProviderInterface;
+use App\Enums\TransactionStatus;
 use App\Models\PaymentProvider;
 use App\Models\ProviderLog;
+use App\Models\Transaction;
 use App\Support\Market;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -56,10 +58,42 @@ class ProviderController extends Controller
             }
         }
 
+        $user = $request->user();
+        $accounts = $this->accountSummaries($user->paymentProviders()->pluck('id'));
+
         return Inertia::render('providers/index', [
-            'providers' => $this->providersForDisplay($request->user()),
+            'providers' => $this->providersForDisplay($user, $accounts),
             'availableDrivers' => $drivers,
         ]);
+    }
+
+    /**
+     * Per-provider, per-currency money summary of successful transactions:
+     * inflow (collected), outflow (fees) and net.
+     *
+     * @return Collection<int, list<array{currency: string, count: int, inflow: float, outflow: float, net: float}>>
+     */
+    private function accountSummaries(Collection $providerIds): Collection
+    {
+        return Transaction::query()
+            ->whereIn('payment_provider_id', $providerIds)
+            ->where('status', TransactionStatus::SUCCESS->value)
+            ->selectRaw('payment_provider_id, currency')
+            ->selectRaw('count(*) as count')
+            ->selectRaw('coalesce(sum(amount), 0) as inflow')
+            ->selectRaw('coalesce(sum(coalesce(collection_fee, 0) + coalesce(settlement_fee, 0)), 0) as outflow')
+            ->selectRaw('coalesce(sum(coalesce(net_amount, amount)), 0) as net')
+            ->groupBy('payment_provider_id', 'currency')
+            ->orderByDesc('inflow')
+            ->get()
+            ->groupBy('payment_provider_id')
+            ->map(fn (Collection $rows): array => $rows->map(fn ($row): array => [
+                'currency' => (string) $row->currency,
+                'count' => (int) $row->count,
+                'inflow' => round((float) $row->inflow, 2),
+                'outflow' => round((float) $row->outflow, 2),
+                'net' => round((float) $row->net, 2),
+            ])->values()->all());
     }
 
     /**
@@ -271,13 +305,15 @@ class ProviderController extends Controller
 
     /**
      * The user's providers with credential secrets stripped from `config`
-     * (only the non-sensitive `supported_countries` is sent to the browser).
+     * (only the non-sensitive `supported_countries` is sent to the browser),
+     * each annotated with its per-currency account summary.
      *
+     * @param  Collection<int, list<array<string, mixed>>>  $accounts
      * @return Collection<int, PaymentProvider>
      */
-    private function providersForDisplay($user)
+    private function providersForDisplay($user, Collection $accounts)
     {
-        return $user->paymentProviders()->get()->map(function (PaymentProvider $provider): PaymentProvider {
+        return $user->paymentProviders()->get()->map(function (PaymentProvider $provider) use ($accounts): PaymentProvider {
             $config = is_string($provider->config) ? json_decode($provider->config, true) : ($provider->config ?? []);
 
             // Keep non-secret config (so the edit form can pre-fill it) but never
@@ -297,6 +333,7 @@ class ProviderController extends Controller
             }
 
             $provider->setAttribute('config', $safe);
+            $provider->setAttribute('accounts', $accounts[$provider->id] ?? []);
 
             return $provider;
         });

@@ -25,9 +25,24 @@ class User extends Authenticatable implements PasskeyUser
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
 
+    /**
+     * The fee/routing policies the switch can operate under.
+     *
+     * @var list<string>
+     */
+    public const FEE_POLICIES = ['transparent', 'cost_aware'];
+
     public function paymentProviders(): HasMany
     {
         return $this->hasMany(PaymentProvider::class);
+    }
+
+    /**
+     * The account's active fee policy, defaulting to "transparent".
+     */
+    public function feePolicy(): string
+    {
+        return in_array($this->fee_policy, self::FEE_POLICIES, true) ? $this->fee_policy : 'transparent';
     }
 
     public function ensureApiToken(): string

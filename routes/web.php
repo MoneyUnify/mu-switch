@@ -3,6 +3,7 @@
 use App\Http\Controllers\ApiLogController;
 use App\Http\Controllers\ApiTokenController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FeePolicyController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProviderController;
 use Illuminate\Support\Facades\Route;
@@ -27,6 +28,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('providers/{provider}', [ProviderController::class, 'destroy'])->name('providers.destroy');
 
     Route::get('payments', [PaymentController::class, 'index'])->name('payments.index');
+
+    Route::get('fee-policy', [FeePolicyController::class, 'show'])->name('fee-policy.show');
+    Route::put('fee-policy', [FeePolicyController::class, 'update'])->name('fee-policy.update');
 });
 
 require __DIR__.'/settings.php';
