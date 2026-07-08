@@ -9,6 +9,9 @@ A **provider** is a configured payment gateway that the switch can route request
 to. Each provider is scoped to your account, so the providers you configure are
 the only ones the switch will ever use for your transactions.
 
+> Looking for which countries and mobile networks each driver reaches? See the
+> [Coverage reference](/docs/api/coverage).
+
 ## Managing providers
 
 Providers are managed from the **Providers** page in the dashboard
