@@ -320,6 +320,121 @@ the country, phone number and amount.
 To enable it, add a provider in the dashboard, choose the **pawaPay** driver,
 paste your API token, and tick the markets you serve.
 
+## Built-in driver: DPO Pay
+
+The platform ships a **DPO Pay** driver (`DpoController`) for **direct
+mobile-money push to pay** across DPO Group's markets — no hosted redirect, the
+payer approves the prompt on their handset. DPO's v6 API is XML, so the driver
+builds the envelopes itself (no `php-soap` extension) and every call flows
+through the provider call logs. You provide:
+
+| Credential | Description |
+| --- | --- |
+| **Company Token** | Your DPO account's `CompanyToken`. |
+| **Service Type** | The DPO service type id configured for your account (e.g. `5525`). |
+
+Each collection is a two-step, server-to-server sequence against
+`https://secure.3gdirectpay.com/API/v6/`: **`createToken`** creates the
+transaction (returning a `TransToken`), then **`ChargeTokenMobile`** charges it —
+sending the **STK/USSD prompt straight to the payer**. The collection starts
+**pending**; verification calls **`verifyToken`** (`Result` `000` → success,
+`904`/`999` → failed, otherwise pending — e.g. `900` "not paid yet"). As with
+every provider, a call needs only the country, phone number and amount.
+
+DPO mobile money is available in **Kenya, Tanzania, Uganda, Rwanda, Zambia,
+Ghana, Malawi, Nigeria** and **Mozambique**.
+
+> **Per-market operator codes.** DPO routes the prompt to a specific
+> mobile-money operator by an **MNO code** it assigns per operator (e.g.
+> `AirtelZM`, `MPESA`) — there is no derivable global standard. So **one DPO
+> provider can serve many markets**: when you tick a market in the provider
+> dialog, an input appears to enter that market's **MNO code**. At request time
+> the switch picks the code for the request's `country` (a caller may also pass
+> an explicit `mno` to override it). Get each code from your DPO dashboard
+> (Get Mobile Payment Options).
+
+To enable it, add a provider in the dashboard, choose the **DPO Pay** driver,
+paste your Company Token and Service Type, tick the markets you serve, and enter
+each market's MNO code.
+
+## Built-in driver: MobiPay
+
+The platform ships a **MobiPay** driver (`MobipayController`) for **mobile-money
+push to pay in Malawi** through MobiPay's Malawi gateway (the *Malipo* product,
+`app.malipo.mw`) — covering **Airtel Money** and **TNM Mpamba**. MobiPay
+authenticates with an API key and an app id, so you provide:
+
+| Credential | Description |
+| --- | --- |
+| **API Key** | Your Malipo `x-api-key` (from the MobiPay dashboard). |
+| **App ID** | Your Malipo project/app id (`x-app-id`). |
+
+The driver initiates a collection with `POST /api/v1/paymentrequest` — which
+pushes a **request-to-pay prompt straight to the payer's wallet** — and confirms
+it by polling `GET /api/v1/payment/enquire/{reference}` (`Completed` → success,
+`Failed` → failed, otherwise pending). As with every provider, a call needs only
+the country, phone number and amount.
+
+> **Operator selection.** MobiPay routes to an operator with a numeric `bankId`
+> (`1` = Airtel Money, `2` = TNM Mpamba). The driver derives it from the payer's
+> number (Airtel `099x`/`098x`, TNM `088x`), falling back to Airtel; a caller may
+> override it with an explicit `bank_id` or `operator` (`airtel`/`tnm`).
+
+MobiPay's mobile-money push is **Malawi-only** — MobiPay's other market (Namibia,
+via *Mobipaid*) is card- and payment-link-based, not wallet push-to-pay.
+
+To enable it, add a provider in the dashboard, choose the **MobiPay** driver,
+paste your API Key and App ID, and tick Malawi.
+
+## Built-in driver: Kazang
+
+The platform ships a **Kazang** driver (`KazangController`) for **mobile-money
+request-to-pay in Zambia** through Kazang's **ContentReady** API — a wallet
+debit that pushes an approval prompt to the payer's handset and credits your
+Kazang wallet once they approve. ContentReady is session-based, so you provide
+your API user credentials plus the operator product IDs Kazang issues you:
+
+| Credential | Description |
+| --- | --- |
+| **API Username** | Your ContentReady API user (client id or account number). |
+| **API Password** | Your ContentReady API password. |
+| **API Channel** | The access channel Kazang created for you. |
+| **API Host** | Your ContentReady host (e.g. `testapi.kazang.net` for the test server). |
+| **MTN MoMo Product ID** | The `product_id` for the MTN wallet-debit product. |
+| **Airtel Pay Product ID** | The `product_id` for the Airtel Pay product. |
+
+The driver logs in with `authClient` (caching the `session_uuid` for the session
+lifetime) and posts to `https://<host>/apimanager/api_rest/v1/<method>`. It
+implements the two operators whose flow keys on a **stable, session-independent
+reference**, so an initiate-then-poll model is safe:
+
+- **MTN MoMo** — `mtnDebit` creates the pending debit and pushes the MTN prompt;
+  verification runs `mtnDebitApproval` → `mtnDebitApprovalConfirm` (keyed on
+  `supplier_transaction_id`).
+- **Airtel Pay** — `airtelPayPayment` → `airtelPayPaymentConfirm` pushes the
+  Airtel prompt; verification runs `airtelPayQuery` → `airtelPayQueryConfirm`
+  (keyed on `airtel_reference`, which Airtel lets you retry until it completes).
+
+The operator is chosen from the payer's prefix (MTN `096x`/`076x`, Airtel
+`097x`/`077x`), overridable with an explicit `operator` (`mtn`/`airtel`).
+Amounts are converted to ngwee (K5.00 → `500`) automatically, and a call needs
+only the country, phone number and amount.
+
+> **Pending is the safe default.** Because ContentReady is built for an in-person
+> vendor terminal, the exact "declined vs not-yet-approved" response codes are
+> best confirmed against a live Kazang account. To never mis-report money, the
+> switch promotes a transaction to **success only on an explicit success**, and
+> otherwise leaves it **pending** (re-check it with the
+> [verify endpoint](/docs/api/verify-payment)); a failed *initiation* is
+> reported as failed so the switch can fall back.
+
+> **Zamtel** is intentionally not offered here: its `zamtelMoneyPay` flow keys on
+> a session-scoped confirmation number, which cannot be safely settled from a
+> later verification call.
+
+To enable it, add a provider in the dashboard, choose the **Kazang** driver,
+paste your credentials, host and product IDs, and tick Zambia.
+
 ## Adding your own driver
 
 Drivers are plain classes in `app/Http/Controllers/Providers` that implement
