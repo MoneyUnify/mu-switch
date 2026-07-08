@@ -40,6 +40,8 @@ class Market
         'MG' => ['name' => 'Madagascar', 'currency' => 'MGA', 'calling_code' => '261', 'alpha3' => 'MDG'],
         'SC' => ['name' => 'Seychelles', 'currency' => 'SCR', 'calling_code' => '248', 'alpha3' => 'SYC'],
         'ZA' => ['name' => 'South Africa', 'currency' => 'ZAR', 'calling_code' => '27', 'alpha3' => 'ZAF'],
+        'NA' => ['name' => 'Namibia', 'currency' => 'NAD', 'calling_code' => '264', 'alpha3' => 'NAM'],
+        'BW' => ['name' => 'Botswana', 'currency' => 'BWP', 'calling_code' => '267', 'alpha3' => 'BWA'],
         'SZ' => ['name' => 'Eswatini', 'currency' => 'SZL', 'calling_code' => '268', 'alpha3' => 'SWZ'],
         'SS' => ['name' => 'South Sudan', 'currency' => 'SSP', 'calling_code' => '211', 'alpha3' => 'SSD'],
         'SN' => ['name' => 'Senegal', 'currency' => 'XOF', 'calling_code' => '221', 'alpha3' => 'SEN'],

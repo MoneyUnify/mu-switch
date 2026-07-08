@@ -11,21 +11,22 @@ use Illuminate\Support\Facades\Http;
 
 beforeEach(fn () => Cache::flush());
 
-function kazangProvider(User $user): PaymentProvider
+function kazangProvider(User $user, array $configOverrides = []): PaymentProvider
 {
     return PaymentProvider::create([
         'user_id' => $user->id,
         'name' => 'Kazang',
         'class' => KazangController::class,
-        'config' => [
+        'config' => array_merge([
             'username' => 'api-user',
             'password' => 'api-pass',
             'channel' => 'web',
             'host' => 'testapi.kazang.net',
             'mtn_product_id' => '2001',
             'airtel_product_id' => '2002',
+            'zamtel_product_id' => '2003',
             'supported_countries' => ['ZM'],
-        ],
+        ], $configOverrides),
         'is_active' => true,
     ]);
 }
@@ -120,19 +121,188 @@ test('the kazang driver surfaces a failed debit as an error', function () {
     $this->assertDatabaseHas('transactions', ['status' => TransactionStatus::FAILED->value]);
 });
 
-test('the kazang driver rejects an unsupported operator prefix', function () {
-    $user = User::factory()->create(['api_token' => 'kz-zamtel']);
+test('the kazang driver rejects an unknown operator prefix', function () {
+    $user = User::factory()->create(['api_token' => 'kz-unknown']);
     kazangProvider($user);
 
     Http::fake(kzAuthOk());
 
-    // 095x is Zamtel — not one of the request-to-pay operators this driver handles.
-    $this->withToken('kz-zamtel')
-        ->postJson('/api/v1/payment/request', ['amount' => 5, 'account_number' => '0955123456', 'country' => 'ZM'])
+    // 060x is not an MTN, Airtel or Zamtel Zambia prefix.
+    $this->withToken('kz-unknown')
+        ->postJson('/api/v1/payment/request', ['amount' => 5, 'account_number' => '0605123456', 'country' => 'ZM'])
         ->assertStatus(422)
         ->assertJsonPath('status', 'error');
 
     Http::assertNotSent(fn ($request) => str_ends_with($request->url(), '/api_rest/v1/mtnDebit'));
+});
+
+test('the kazang driver completes a Zamtel payment on a confirmed receipt', function () {
+    $user = User::factory()->create(['api_token' => 'kz-zamtel']);
+    kazangProvider($user);
+
+    Http::fake([
+        ...kzAuthOk(),
+        '*/api_rest/v1/zamtelMoneyPay' => Http::response(['response_code' => '0', 'confirmation_number' => '444'], 200),
+        '*/api_rest/v1/zamtelMoneyPayConfirm' => Http::response(['response_code' => '0', 'zamtel_reference' => '000000108591', 'transaction_reference_str' => '63190'], 200),
+    ]);
+
+    // 095x is a Zamtel Zambia prefix; the confirmed receipt is final.
+    $this->withToken('kz-zamtel')
+        ->postJson('/api/v1/payment/request', ['amount' => 12.73, 'account_number' => '0955123456', 'country' => 'ZM'])
+        ->assertOk()
+        ->assertJsonPath('status', 'success')
+        ->assertJsonPath('data.status', 'success');
+
+    $this->assertDatabaseHas('transactions', [
+        'provider_transaction_id' => '000000108591',
+        'currency' => 'ZMW',
+        'status' => TransactionStatus::SUCCESS->value,
+    ]);
+
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/api_rest/v1/zamtelMoneyPay')
+        && $request['product_id'] === 2003
+        && $request['amount'] === '1273'
+        && $request['msisdn'] === '260955123456');
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/api_rest/v1/zamtelMoneyPayConfirm')
+        && $request['confirmation_number'] === '444');
+});
+
+test('the kazang driver keeps an unconfirmed Zamtel payment pending and settles it on verify', function () {
+    $user = User::factory()->create(['api_token' => 'kz-zamtel-2']);
+    kazangProvider($user);
+
+    Http::fake([
+        ...kzAuthOk(),
+        '*/api_rest/v1/zamtelMoneyPay' => Http::response(['response_code' => '0', 'confirmation_number' => '445'], 200),
+        // The payer hasn't entered their PIN on the Zamtel USSD prompt yet.
+        '*/api_rest/v1/zamtelMoneyPayConfirm' => Http::sequence()
+            ->push(['response_code' => '19', 'response_message' => 'Busy processing, please wait ...'], 200)
+            ->push(['response_code' => '0', 'zamtel_reference' => '000000108592'], 200),
+    ]);
+
+    $response = $this->withToken('kz-zamtel-2')
+        ->postJson('/api/v1/payment/request', ['amount' => 5, 'account_number' => '0955123456', 'country' => 'ZM'])
+        ->assertOk()
+        ->assertJsonPath('data.status', 'pending');
+
+    $transactionId = $response->json('data.transaction_id');
+
+    // Verification retries the confirm with the stored confirmation number.
+    $this->withToken('kz-zamtel-2')
+        ->postJson('/api/v1/payment/verify', ['transaction_id' => $transactionId])
+        ->assertOk()
+        ->assertJsonPath('status', 'success');
+
+    $this->assertDatabaseHas('transactions', [
+        'transaction_id' => $transactionId,
+        'status' => TransactionStatus::SUCCESS->value,
+    ]);
+});
+
+test('the kazang driver runs a configured market through the same envelope', function () {
+    $user = User::factory()->create(['api_token' => 'kz-na']);
+    kazangProvider($user, [
+        'supported_countries' => ['ZM', 'NA'],
+        'market_operators' => [
+            'NA' => [
+                'product_id' => '7001',
+                'pay_method' => 'mtcMarisPay',
+                'pay_confirm_method' => 'mtcMarisPayConfirm',
+                'query_method' => '',
+                'query_confirm_method' => '',
+                'msisdn_param' => '',
+                'reference_field' => '',
+            ],
+        ],
+    ]);
+
+    Http::fake([
+        ...kzAuthOk(),
+        '*/api_rest/v1/mtcMarisPay' => Http::response(['response_code' => '0', 'confirmation_number' => '555'], 200),
+        '*/api_rest/v1/mtcMarisPayConfirm' => Http::response(['response_code' => '0', 'transaction_reference_str' => 'MTC-64293'], 200),
+    ]);
+
+    // No query method configured: the confirmed receipt is final.
+    $this->withToken('kz-na')
+        ->postJson('/api/v1/payment/request', ['amount' => 100, 'account_number' => '0817363450', 'country' => 'NA'])
+        ->assertOk()
+        ->assertJsonPath('data.status', 'success');
+
+    $this->assertDatabaseHas('transactions', [
+        'provider_transaction_id' => 'MTC-64293',
+        'currency' => 'NAD',
+        'country' => 'NA',
+        'status' => TransactionStatus::SUCCESS->value,
+    ]);
+
+    // Same session envelope, Namibian E.164 msisdn, defaults applied.
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/api_rest/v1/mtcMarisPay')
+        && $request['session_uuid'] === 'sess-123'
+        && $request['product_id'] === 7001
+        && $request['amount'] === '10000'
+        && $request['wallet_msisdn'] === '264817363450');
+});
+
+test('a configured market with a query method settles on verification', function () {
+    $user = User::factory()->create(['api_token' => 'kz-bw']);
+    kazangProvider($user, [
+        'supported_countries' => ['ZM', 'BW'],
+        'market_operators' => [
+            'BW' => [
+                'product_id' => '8001',
+                'pay_method' => 'orangeMoneyPay',
+                'pay_confirm_method' => 'orangeMoneyPayConfirm',
+                'query_method' => 'orangeMoneyPayQuery',
+                'query_confirm_method' => 'orangeMoneyPayQueryConfirm',
+                'msisdn_param' => 'msisdn',
+                'reference_field' => 'orange_reference',
+            ],
+        ],
+    ]);
+
+    Http::fake([
+        ...kzAuthOk(),
+        '*/api_rest/v1/orangeMoneyPay' => Http::response(['response_code' => '0', 'confirmation_number' => '666'], 200),
+        '*/api_rest/v1/orangeMoneyPayConfirm' => Http::response(['response_code' => '0', 'orange_reference' => 'OM-777'], 200),
+        '*/api_rest/v1/orangeMoneyPayQuery' => Http::response(['response_code' => '0', 'confirmation_number' => '667'], 200),
+        '*/api_rest/v1/orangeMoneyPayQueryConfirm' => Http::response(['response_code' => '0'], 200),
+    ]);
+
+    // A query method is configured, so the push stays pending until verified.
+    $response = $this->withToken('kz-bw')
+        ->postJson('/api/v1/payment/request', ['amount' => 50, 'account_number' => '071234567', 'country' => 'BW'])
+        ->assertOk()
+        ->assertJsonPath('data.status', 'pending');
+
+    $transactionId = $response->json('data.transaction_id');
+
+    $this->assertDatabaseHas('transactions', [
+        'provider_transaction_id' => 'OM-777',
+        'currency' => 'BWP',
+        'status' => TransactionStatus::PENDING->value,
+    ]);
+
+    $this->withToken('kz-bw')
+        ->postJson('/api/v1/payment/verify', ['transaction_id' => $transactionId])
+        ->assertOk()
+        ->assertJsonPath('status', 'success');
+
+    // The query carries the custom msisdn param and reference field.
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/api_rest/v1/orangeMoneyPayQuery')
+        && $request['msisdn'] === '26771234567'
+        && $request['orange_reference'] === 'OM-777');
+});
+
+test('a configured-market country without its integration is rejected', function () {
+    $user = User::factory()->create(['api_token' => 'kz-na-missing']);
+    kazangProvider($user, ['supported_countries' => ['ZM', 'NA']]);
+
+    Http::fake(kzAuthOk());
+
+    $this->withToken('kz-na-missing')
+        ->postJson('/api/v1/payment/request', ['amount' => 10, 'account_number' => '0817363450', 'country' => 'NA'])
+        ->assertStatus(422)
+        ->assertJsonPath('status', 'error');
 });
 
 function pendingKazangTransaction(User $user, string $operator, string $reference): Transaction

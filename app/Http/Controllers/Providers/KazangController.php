@@ -31,32 +31,39 @@ use Illuminate\Support\Str;
  *
  * For collections it exposes wallet-debit ("request to pay") flows that push a
  * prompt to the payer's handset and credit the API user's Kazang wallet once the
- * payer approves. This driver implements the two operators whose flow is keyed
- * on a stable, session-independent reference — making the initiate/poll-verify
- * model safe across sessions:
+ * payer approves. Zambia's three major wallets are implemented exactly as
+ * documented:
  *   • MTN MoMo  — mtnDebit → (payer approves) → mtnDebitApproval → …Confirm,
- *                 keyed on `supplier_transaction_id`.
+ *                 keyed on the stable `supplier_transaction_id`.
  *   • Airtel    — airtelPayPayment → …Confirm → (payer approves) →
- *                 airtelPayQuery → …Confirm, keyed on `airtel_reference`
- *                 (explicitly retry-able until Airtel completes it).
+ *                 airtelPayQuery → …Confirm, keyed on the stable
+ *                 `airtel_reference` (explicitly retry-able until it completes).
+ *   • Zamtel    — zamtelMoneyPay → (payer enters PIN on the Zamtel USSD
+ *                 interface) → zamtelMoneyPayConfirm, whose success receipt
+ *                 completes the payment ("Payment Successful").
  *
- * requestPayment initiates the debit and leaves the transaction pending while
- * the payer approves; verifyPayment runs the settle/query flow. To avoid ever
- * mis-reporting money movement, verify only promotes to SUCCESS on an explicit
- * success (response_code 0) and otherwise leaves the transaction pending.
+ * Because Kazang's other markets (South Africa, Namibia, Botswana) follow the
+ * same uniform envelope — one authClient session, one JSON POST per method,
+ * an operator-assigned `product_id` — but their pay-direction method names are
+ * account-specific, those markets are **config-driven**: ticking one in the
+ * dashboard opens a dialog asking for the operator's method names and product
+ * id (from your Kazang product list / account manager), and the driver runs
+ * the same initiate → confirm → (optional query) pattern with them.
  *
- * The operator's `product_id`, the production host, and the API credentials are
- * account-specific and supplied via config (obtained from Kazang) — never
- * guessed.
+ * To avoid ever mis-reporting money movement, a transaction is promoted to
+ * SUCCESS only on an explicit success (response_code 0) of the flow's final
+ * step, and otherwise stays pending; only a failed initiation is marked failed.
  */
 class KazangController extends Controller implements PaymentProviderInterface
 {
     public const PROVIDER_NAME = 'Kazang';
 
     /**
-     * Kazang's request-to-pay flows this driver implements are Zambia wallets.
+     * Zambia's wallets are fully documented; South Africa, Namibia and Botswana
+     * follow the same ContentReady envelope with account-specific pay methods,
+     * collected per market via the dashboard's integration dialog.
      */
-    public const SUPPORTED_COUNTRIES = ['ZM'];
+    public const SUPPORTED_COUNTRIES = ['ZM', 'ZA', 'NA', 'BW'];
 
     public const DEFAULT_COUNTRIES = 'ZM';
 
@@ -73,13 +80,36 @@ class KazangController extends Controller implements PaymentProviderInterface
         ['key' => 'password', 'label' => 'API Password', 'type' => 'password'],
         ['key' => 'channel', 'label' => 'API Channel', 'type' => 'text'],
         ['key' => 'host', 'label' => 'API Host', 'type' => 'text'],
-        ['key' => 'mtn_product_id', 'label' => 'MTN MoMo Product ID', 'type' => 'text'],
-        ['key' => 'airtel_product_id', 'label' => 'Airtel Pay Product ID', 'type' => 'text'],
+        ['key' => 'mtn_product_id', 'label' => 'MTN MoMo Product ID (Zambia)', 'type' => 'text'],
+        ['key' => 'airtel_product_id', 'label' => 'Airtel Pay Product ID (Zambia)', 'type' => 'text'],
+        ['key' => 'zamtel_product_id', 'label' => 'Zamtel Money Product ID (Zambia)', 'type' => 'text'],
+    ];
+
+    /**
+     * Markets whose pay methods are account-specific: ticking one of these in
+     * the dashboard opens an integration dialog collecting the ContentReady
+     * method names + product id for that market's wallet (from your Kazang
+     * product list). Stored in config under `market_operators.{COUNTRY}`.
+     */
+    public const MARKET_EXTRA_FIELDS = [
+        'key' => 'market_operators',
+        'countries' => ['ZA', 'NA', 'BW'],
+        'title' => 'Kazang market integration',
+        'description' => 'This market uses the same Kazang session and envelope as Zambia, but its wallet\'s method names and product ID are assigned per account. Enter them from your Kazang product list (productList) or account manager.',
+        'fields' => [
+            ['key' => 'product_id', 'label' => 'Product ID', 'required' => true, 'placeholder' => 'e.g. 5305 (from productList)'],
+            ['key' => 'pay_method', 'label' => 'Payment method', 'required' => true, 'placeholder' => 'e.g. mtcMarisPay'],
+            ['key' => 'pay_confirm_method', 'label' => 'Payment confirm method', 'required' => false, 'placeholder' => 'e.g. mtcMarisPayConfirm (optional)'],
+            ['key' => 'query_method', 'label' => 'Status query method', 'required' => false, 'placeholder' => 'e.g. mtcMarisPayQuery (optional)'],
+            ['key' => 'query_confirm_method', 'label' => 'Status confirm method', 'required' => false, 'placeholder' => 'e.g. mtcMarisPayQueryConfirm (optional)'],
+            ['key' => 'msisdn_param', 'label' => 'Phone parameter name', 'required' => false, 'placeholder' => 'wallet_msisdn (default)'],
+            ['key' => 'reference_field', 'label' => 'Reference field name', 'required' => false, 'placeholder' => 'transaction_reference_str (default)'],
+        ],
     ];
 
     /**
      * Local two-digit prefix (after the country code) => Zambian operator.
-     * MTN: 096x/076x — Airtel: 097x/077x.
+     * MTN: 096x/076x — Airtel: 097x/077x — Zamtel: 095x/075x.
      *
      * @var array<string, string>
      */
@@ -88,6 +118,8 @@ class KazangController extends Controller implements PaymentProviderInterface
         '76' => 'mtn',
         '97' => 'airtel',
         '77' => 'airtel',
+        '95' => 'zamtel',
+        '75' => 'zamtel',
     ];
 
     /**
@@ -113,6 +145,14 @@ class KazangController extends Controller implements PaymentProviderInterface
      */
     private array $productIds = [];
 
+    /**
+     * Config-driven wallet integrations for the non-Zambia markets:
+     * country code => {product_id, pay_method, pay_confirm_method?, …}.
+     *
+     * @var array<string, array<string, string>>
+     */
+    private array $marketOperators = [];
+
     public ?PaymentProvider $provider = null;
 
     /**
@@ -136,7 +176,9 @@ class KazangController extends Controller implements PaymentProviderInterface
         $this->productIds = [
             'mtn' => (string) ($config['mtn_product_id'] ?? ''),
             'airtel' => (string) ($config['airtel_product_id'] ?? ''),
+            'zamtel' => (string) ($config['zamtel_product_id'] ?? ''),
         ];
+        $this->marketOperators = is_array($config['market_operators'] ?? null) ? $config['market_operators'] : [];
         $this->provider = $provider;
 
         return null;
@@ -149,20 +191,30 @@ class KazangController extends Controller implements PaymentProviderInterface
     public function requestPayment(Request $request): JsonResponse
     {
         $country = strtoupper($request['country']);
-        if ($country !== 'ZM') {
-            return ApiResponse::error("Kazang only supports request to pay in Zambia (ZM), not {$country}", 422);
+        if (! in_array($country, self::SUPPORTED_COUNTRIES, true)) {
+            return ApiResponse::error("Kazang does not support request to pay in {$country}", 422);
         }
 
         $currency = Market::currency($country);
         $msisdn = $this->normaliseMsisdn($request['account_number'], $country);
-        $operator = $this->resolveOperator($msisdn, $request);
-        if (! $operator) {
-            return ApiResponse::error('Kazang request to pay supports MTN and Airtel numbers only', 422);
-        }
 
-        $productId = trim((string) ($this->productIds[$operator] ?? ''));
-        if ($productId === '') {
-            return ApiResponse::error("No Kazang product ID is configured for {$operator}", 422);
+        if ($country === 'ZM') {
+            $operator = $this->resolveOperator($msisdn, $request);
+            if (! $operator) {
+                return ApiResponse::error('Kazang request to pay supports MTN, Airtel and Zamtel numbers only', 422);
+            }
+
+            $productId = trim((string) ($this->productIds[$operator] ?? ''));
+            if ($productId === '') {
+                return ApiResponse::error("No Kazang product ID is configured for {$operator}", 422);
+            }
+        } else {
+            // Config-driven market: the wallet's methods + product id were
+            // collected in the dashboard's market-integration dialog.
+            $operator = $country;
+            if (! $this->customOperator($country)) {
+                return ApiResponse::error("The Kazang {$country} market needs its payment method and product ID configured on the provider", 422);
+            }
         }
 
         $amountMinor = $this->toMinorUnits($request['amount']);
@@ -184,9 +236,12 @@ class KazangController extends Controller implements PaymentProviderInterface
         $transaction->save();
 
         try {
-            [$operatorReference, $initiate] = $operator === 'mtn'
-                ? $this->initiateMtn($productId, $amountMinor, $msisdn, $reference)
-                : $this->initiateAirtel($productId, $amountMinor, $msisdn, $reference);
+            [$operatorReference, $initiate, $status] = match ($operator) {
+                'mtn' => $this->initiateMtn($productId, $amountMinor, $msisdn, $reference),
+                'airtel' => $this->initiateAirtel($productId, $amountMinor, $msisdn, $reference),
+                'zamtel' => $this->initiateZamtel($productId, $amountMinor, $msisdn, $reference),
+                default => $this->initiateCustom($this->customOperator($country), $amountMinor, $msisdn, $reference),
+            };
         } catch (KazangException $exception) {
             $transaction->update([
                 'status' => TransactionStatus::FAILED,
@@ -198,7 +253,7 @@ class KazangController extends Controller implements PaymentProviderInterface
 
         $transaction->update([
             'provider_transaction_id' => $operatorReference,
-            'status' => TransactionStatus::PENDING,
+            'status' => $status,
             'provider_response' => [
                 'operator' => $operator,
                 'reference' => $operatorReference,
@@ -208,11 +263,16 @@ class KazangController extends Controller implements PaymentProviderInterface
             ],
         ]);
 
-        return ApiResponse::success('Payment request initiated successfully', [
-            'transaction_id' => $transaction->transaction_id,
-            'reference' => $transaction->provider_transaction_id,
-            'status' => $transaction->status->value,
-        ]);
+        return ApiResponse::success(
+            $status === TransactionStatus::SUCCESS
+                ? 'Payment completed successfully'
+                : 'Payment request initiated successfully',
+            [
+                'transaction_id' => $transaction->transaction_id,
+                'reference' => $transaction->provider_transaction_id,
+                'status' => $transaction->status->value,
+            ],
+        );
     }
 
     /**
@@ -221,22 +281,37 @@ class KazangController extends Controller implements PaymentProviderInterface
      */
     public function verifyPayment(Transaction $transaction): JsonResponse
     {
+        // A transaction that already reached a final state stays there — the
+        // settle flows below are one-shot and must never downgrade a success.
+        if ($transaction->status !== TransactionStatus::PENDING) {
+            return ApiResponse::status($transaction->status->value, self::statusMessage($transaction->status), [
+                'transaction_id' => $transaction->transaction_id,
+                'reference' => $transaction->provider_transaction_id,
+                'status' => $transaction->status->value,
+                'amount' => (float) $transaction->amount,
+                'currency' => $transaction->currency,
+            ]);
+        }
+
         $meta = is_array($transaction->provider_response) ? $transaction->provider_response : [];
-        $operator = $meta['operator'] ?? $this->resolveOperator((string) ($meta['msisdn'] ?? ''), null);
-        $reference = $meta['reference'] ?? $transaction->provider_transaction_id;
-        $msisdn = $meta['msisdn'] ?? '';
-        $amountMinor = $meta['amount_minor'] ?? $this->toMinorUnits((string) $transaction->amount);
+        $operator = (string) ($meta['operator'] ?? $this->resolveOperator((string) ($meta['msisdn'] ?? ''), null));
+        $reference = (string) ($meta['reference'] ?? $transaction->provider_transaction_id);
+        $msisdn = (string) ($meta['msisdn'] ?? '');
+        $amountMinor = (int) ($meta['amount_minor'] ?? $this->toMinorUnits((string) $transaction->amount));
         $productId = trim((string) ($this->productIds[$operator] ?? ''));
 
-        if (! $operator || $productId === '' || ! $reference || ! $msisdn) {
+        if ($operator === '' || $reference === '' || (in_array($operator, ['mtn', 'airtel', 'zamtel'], true) && $productId === '')) {
             return ApiResponse::error('This transaction cannot be verified with Kazang (missing routing data)', 422);
         }
 
         try {
-            $settled = $operator === 'mtn'
-                ? $this->settleMtn($productId, (int) $amountMinor, (string) $msisdn, (string) $reference)
-                : $this->settleAirtel($productId, (int) $amountMinor, (string) $msisdn, (string) $reference);
-        } catch (KazangException $exception) {
+            $settled = match ($operator) {
+                'mtn' => $this->settleMtn($productId, $amountMinor, $msisdn, $reference),
+                'airtel' => $this->settleAirtel($productId, $amountMinor, $msisdn, $reference),
+                'zamtel' => $this->settleZamtel($productId, (string) ($meta['initiate']['confirmation_number'] ?? '')),
+                default => $this->settleCustom($this->customOperator($operator), $amountMinor, $msisdn, $reference),
+            };
+        } catch (KazangException) {
             // A settle/query error is treated as "still pending" so a payment
             // that may yet be approved is never wrongly marked failed.
             $settled = null;
@@ -262,7 +337,7 @@ class KazangController extends Controller implements PaymentProviderInterface
     /**
      * MTN MoMo: create the pending debit (pushes the MTN prompt to the payer).
      *
-     * @return array{0: string, 1: array<string, mixed>}
+     * @return array{0: string, 1: array<string, mixed>, 2: TransactionStatus}
      */
     private function initiateMtn(string $productId, int $amountMinor, string $msisdn, string $reference): array
     {
@@ -279,13 +354,13 @@ class KazangController extends Controller implements PaymentProviderInterface
             throw new KazangException('MTN did not return a payment reference', $response);
         }
 
-        return [$supplierReference, $response];
+        return [$supplierReference, $response, TransactionStatus::PENDING];
     }
 
     /**
      * Airtel: create + confirm the payment request (pushes the Airtel prompt).
      *
-     * @return array{0: string, 1: array<string, mixed>}
+     * @return array{0: string, 1: array<string, mixed>, 2: TransactionStatus}
      */
     private function initiateAirtel(string $productId, int $amountMinor, string $msisdn, string $reference): array
     {
@@ -308,7 +383,82 @@ class KazangController extends Controller implements PaymentProviderInterface
             throw new KazangException('Airtel did not return a payment reference', $confirm);
         }
 
-        return [$airtelReference, ['payment' => $payment, 'confirm' => $confirm]];
+        return [$airtelReference, ['payment' => $payment, 'confirm' => $confirm], TransactionStatus::PENDING];
+    }
+
+    /**
+     * Zamtel: initiate the payment (Zamtel prompts the payer for their PIN over
+     * USSD) and confirm it — a successful confirm is the final receipt.
+     *
+     * @return array{0: string, 1: array<string, mixed>, 2: TransactionStatus}
+     */
+    private function initiateZamtel(string $productId, int $amountMinor, string $msisdn, string $reference): array
+    {
+        $payment = $this->call('zamtelMoneyPay', [
+            'product_id' => (int) $productId,
+            'client_transaction_reference' => $reference,
+            'amount' => (string) $amountMinor,
+            'msisdn' => $msisdn,
+        ]);
+        $this->assertOk($payment, 'Zamtel payment request failed');
+
+        $confirm = $this->call('zamtelMoneyPayConfirm', [
+            'product_id' => (int) $productId,
+            'confirmation_number' => (string) ($payment['confirmation_number'] ?? ''),
+        ]);
+
+        if ($this->isOk($confirm)) {
+            $zamtelReference = (string) ($confirm['zamtel_reference'] ?? $confirm['transaction_reference_str'] ?? $reference);
+
+            return [$zamtelReference, ['payment' => $payment, 'confirm' => $confirm], TransactionStatus::SUCCESS];
+        }
+
+        // Not confirmed yet (e.g. the payer hasn't entered their PIN) — stay
+        // pending; verification retries the confirm with the stored number.
+        return [$reference, [
+            'payment' => $payment,
+            'confirm' => $confirm,
+            'confirmation_number' => (string) ($payment['confirmation_number'] ?? ''),
+        ], TransactionStatus::PENDING];
+    }
+
+    /**
+     * Config-driven market (ZA/NA/BW): run the wallet's configured pay method
+     * (+ optional confirm) through the same ContentReady envelope. With a query
+     * method configured the payment settles on verification; otherwise the
+     * confirmed receipt is final.
+     *
+     * @param  array<string, string>|null  $op
+     * @return array{0: string, 1: array<string, mixed>, 2: TransactionStatus}
+     */
+    private function initiateCustom(?array $op, int $amountMinor, string $msisdn, string $reference): array
+    {
+        if (! $op) {
+            throw new KazangException('This Kazang market is not configured');
+        }
+
+        $payment = $this->call($op['pay_method'], [
+            'product_id' => (int) $op['product_id'],
+            'client_transaction_reference' => $reference,
+            'amount' => (string) $amountMinor,
+            $this->msisdnParam($op) => $msisdn,
+        ]);
+        $this->assertOk($payment, 'Kazang payment request failed');
+
+        $final = $payment;
+        if ($op['pay_confirm_method'] !== '') {
+            $final = $this->call($op['pay_confirm_method'], [
+                'product_id' => (int) $op['product_id'],
+                'confirmation_number' => (string) ($payment['confirmation_number'] ?? ''),
+            ]);
+            $this->assertOk($final, 'Kazang payment confirmation failed');
+        }
+
+        $referenceField = $this->referenceField($op);
+        $operatorReference = (string) ($final[$referenceField] ?? $payment[$referenceField] ?? $final['transaction_reference_str'] ?? $reference);
+        $status = $op['query_method'] !== '' ? TransactionStatus::PENDING : TransactionStatus::SUCCESS;
+
+        return [$operatorReference, ['payment' => $payment, 'confirm' => $final], $status];
     }
 
     /**
@@ -355,6 +505,95 @@ class KazangController extends Controller implements PaymentProviderInterface
         ]);
 
         return $this->isOk($confirm);
+    }
+
+    /**
+     * Zamtel settle: retry the pay confirm with the stored confirmation number
+     * (valid within the session). Returns true only on the success receipt.
+     */
+    private function settleZamtel(string $productId, string $confirmationNumber): bool
+    {
+        if ($confirmationNumber === '') {
+            return false;
+        }
+
+        $confirm = $this->call('zamtelMoneyPayConfirm', [
+            'product_id' => (int) $productId,
+            'confirmation_number' => $confirmationNumber,
+        ]);
+
+        return $this->isOk($confirm);
+    }
+
+    /**
+     * Config-driven market settle: run the configured query (+ optional
+     * confirm). Returns true only when every configured step succeeds.
+     *
+     * @param  array<string, string>|null  $op
+     */
+    private function settleCustom(?array $op, int $amountMinor, string $msisdn, string $reference): bool
+    {
+        if (! $op || $op['query_method'] === '') {
+            return false;
+        }
+
+        $query = $this->call($op['query_method'], [
+            'product_id' => (int) $op['product_id'],
+            'amount' => (string) $amountMinor,
+            $this->msisdnParam($op) => $msisdn,
+            $this->referenceField($op) => $reference,
+        ]);
+        if (! $this->isOk($query)) {
+            return false;
+        }
+
+        if ($op['query_confirm_method'] === '') {
+            return true;
+        }
+
+        $confirm = $this->call($op['query_confirm_method'], [
+            'product_id' => (int) $op['product_id'],
+            'confirmation_number' => (string) ($query['confirmation_number'] ?? ''),
+        ]);
+
+        return $this->isOk($confirm);
+    }
+
+    /**
+     * The configured wallet integration for a non-Zambia market, normalised
+     * with blank defaults, or null when its required fields are missing.
+     *
+     * @return array<string, string>|null
+     */
+    private function customOperator(string $country): ?array
+    {
+        $op = $this->marketOperators[strtoupper($country)] ?? null;
+        if (! is_array($op)) {
+            return null;
+        }
+
+        $op = array_map(fn ($value) => trim((string) $value), $op);
+        if (($op['product_id'] ?? '') === '' || ($op['pay_method'] ?? '') === '') {
+            return null;
+        }
+
+        return $op + ['pay_confirm_method' => '', 'query_method' => '', 'query_confirm_method' => '', 'msisdn_param' => '', 'reference_field' => ''];
+    }
+
+    /**
+     * @param  array<string, string>  $op
+     */
+    private function msisdnParam(array $op): string
+    {
+        return $op['msisdn_param'] !== '' ? $op['msisdn_param'] : 'wallet_msisdn';
+    }
+
+    /**
+     * @param  array<string, string>  $op
+     */
+    private function referenceField(array $op): string
+    {
+        return $op['reference_field'] !== '' ? $op['reference_field'] : 'transaction_reference_str';
     }
 
     /**
@@ -452,7 +691,7 @@ class KazangController extends Controller implements PaymentProviderInterface
     private function resolveOperator(string $msisdn, ?Request $request): ?string
     {
         $given = strtolower(trim((string) ($request?->input('operator') ?? '')));
-        if (in_array($given, ['mtn', 'airtel'], true)) {
+        if (in_array($given, ['mtn', 'airtel', 'zamtel'], true)) {
             return $given;
         }
 

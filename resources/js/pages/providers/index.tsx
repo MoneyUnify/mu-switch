@@ -13,6 +13,7 @@ import {
     Wallet,
     ArrowDownLeft,
     ArrowUpRight,
+    Search,
 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -92,6 +93,21 @@ interface MarketField {
     placeholder?: string;
 }
 
+interface MarketExtraField {
+    key: string;
+    label: string;
+    required: boolean;
+    placeholder?: string;
+}
+
+interface MarketExtra {
+    key: string;
+    countries: string[];
+    title: string;
+    description: string;
+    fields: MarketExtraField[];
+}
+
 interface AvailableDriver {
     name: string;
     class: string;
@@ -100,6 +116,7 @@ interface AvailableDriver {
     default_logo: string | null;
     config_fields: ConfigField[];
     market_field?: MarketField | null;
+    market_extra?: MarketExtra | null;
 }
 
 const FALLBACK_CONFIG_FIELDS: ConfigField[] = [
@@ -119,7 +136,7 @@ function MarketsSummary({ labels }: { labels: string[] }) {
         );
     }
 
-    if (labels.length <= 4) {
+    if (labels.length <= 2) {
         return (
             <span className="font-medium text-neutral-700 dark:text-neutral-300">
                 {labels.join(', ')}
@@ -185,6 +202,7 @@ export default function Index({
         config: Record<string, string>;
         supported_countries: string[];
         market_values: Record<string, string>;
+        market_extra_values: Record<string, Record<string, string>>;
         logo_url: string;
         is_active: boolean;
     }>({
@@ -193,6 +211,7 @@ export default function Index({
         config: {},
         supported_countries: [],
         market_values: {},
+        market_extra_values: {},
         logo_url: '',
         is_active: true,
     });
@@ -213,6 +232,94 @@ export default function Index({
     const editDriver = availableDrivers.find(
         (d) => d.class === editingProvider?.class,
     );
+
+    // The country names a provider serves (falling back to raw codes).
+    const countryLabelsFor = (provider: PaymentProvider): string[] => {
+        const countries = provider.config?.supported_countries;
+        const codes = Array.isArray(countries)
+            ? countries
+            : countries
+              ? [countries]
+              : [];
+        const driverOptions =
+            availableDrivers.find((d) => d.class === provider.class)
+                ?.supported_country_options ?? [];
+        return codes.map(
+            (code) => driverOptions.find((o) => o.code === code)?.name ?? code,
+        );
+    };
+
+    // Search filters the provider list by name, driver class and countries.
+    const [search, setSearch] = useState('');
+    const query = search.trim().toLowerCase();
+    const filteredProviders = query
+        ? providers.filter((p) =>
+              [p.name, p.class.split('\\').pop() ?? '', ...countryLabelsFor(p)]
+                  .join(' ')
+                  .toLowerCase()
+                  .includes(query),
+          )
+        : providers;
+
+    // The Add Provider picker only offers drivers not already configured.
+    const addedClasses = new Set(providers.map((p) => p.class));
+    const unusedDrivers = availableDrivers.filter(
+        (d) => !addedClasses.has(d.class),
+    );
+
+    // Per-market integration dialog state: the market being configured plus a
+    // local draft of its values (only committed to the form on Save).
+    const [extraMarket, setExtraMarket] = useState<{
+        code: string;
+        isNew: boolean;
+    } | null>(null);
+    const [extraDraft, setExtraDraft] = useState<Record<string, string>>({});
+    const activeMarketExtra =
+        (editingProvider ? editDriver : selectedDriver)?.market_extra ?? null;
+
+    const marketExtraConfigured = (code: string, extra: MarketExtra) =>
+        extra.fields
+            .filter((field) => field.required)
+            .every(
+                (field) =>
+                    (
+                        data.market_extra_values[code]?.[field.key] || ''
+                    ).trim() !== '',
+            );
+
+    const openExtraMarketDialog = (code: string, isNew: boolean) => {
+        setExtraDraft({ ...(data.market_extra_values[code] ?? {}) });
+        setExtraMarket({ code, isNew });
+    };
+
+    const saveExtraMarket = () => {
+        if (!extraMarket) return;
+        setData('market_extra_values', {
+            ...data.market_extra_values,
+            [extraMarket.code]: extraDraft,
+        });
+        setExtraMarket(null);
+    };
+
+    const cancelExtraMarket = () => {
+        // Cancelling a market that was just ticked unticks it again, so a
+        // half-configured market is never submitted.
+        if (extraMarket?.isNew) {
+            setData(
+                'supported_countries',
+                data.supported_countries.filter(
+                    (code) => code !== extraMarket.code,
+                ),
+            );
+        }
+        setExtraMarket(null);
+    };
+
+    const extraDraftComplete =
+        activeMarketExtra?.fields
+            .filter((field) => field.required)
+            .every((field) => (extraDraft[field.key] || '').trim() !== '') ??
+        true;
 
     // Seed config values: existing value, else the first option for selects, else blank.
     const initialConfig = (
@@ -276,6 +383,7 @@ export default function Index({
     const marketsCheckboxes = (
         options: MarketOption[],
         marketField?: MarketField | null,
+        marketExtra?: MarketExtra | null,
     ) => (
         <div className="space-y-1">
             <Label>Supported Countries</Label>
@@ -301,9 +409,23 @@ export default function Index({
                                 >
                                     <Checkbox
                                         checked={checked}
-                                        onCheckedChange={() =>
-                                            toggleCountry(market.code)
-                                        }
+                                        onCheckedChange={() => {
+                                            const willCheck = !checked;
+                                            toggleCountry(market.code);
+                                            // Markets needing extra integration
+                                            // details open the dialog on tick.
+                                            if (
+                                                willCheck &&
+                                                marketExtra?.countries.includes(
+                                                    market.code,
+                                                )
+                                            ) {
+                                                openExtraMarketDialog(
+                                                    market.code,
+                                                    true,
+                                                );
+                                            }
+                                        }}
                                     />
                                     <span className="flex flex-col leading-tight">
                                         <span className="font-medium">
@@ -314,6 +436,42 @@ export default function Index({
                                         </span>
                                     </span>
                                 </label>
+                                {marketExtra?.countries.includes(market.code) &&
+                                    checked && (
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                openExtraMarketDialog(
+                                                    market.code,
+                                                    false,
+                                                )
+                                            }
+                                            className={cn(
+                                                'flex w-full cursor-pointer items-center justify-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors',
+                                                marketExtraConfigured(
+                                                    market.code,
+                                                    marketExtra,
+                                                )
+                                                    ? 'border-emerald-300 text-emerald-600 hover:bg-emerald-50 dark:border-emerald-800 dark:hover:bg-emerald-950'
+                                                    : 'border-amber-300 text-amber-600 hover:bg-amber-50 dark:border-amber-800 dark:hover:bg-amber-950',
+                                            )}
+                                        >
+                                            {marketExtraConfigured(
+                                                market.code,
+                                                marketExtra,
+                                            ) ? (
+                                                <>
+                                                    <CheckCircle2 className="h-3 w-3" />
+                                                    Integration configured
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Settings className="h-3 w-3" />
+                                                    Configure integration
+                                                </>
+                                            )}
+                                        </button>
+                                    )}
                                 {marketField && checked && (
                                     <>
                                         <Input
@@ -383,6 +541,14 @@ export default function Index({
             marketFieldKey && provider.config?.[marketFieldKey]
                 ? (provider.config[marketFieldKey] as Record<string, string>)
                 : {};
+        const marketExtraKey = driver?.market_extra?.key;
+        const marketExtraValues =
+            marketExtraKey && provider.config?.[marketExtraKey]
+                ? (provider.config[marketExtraKey] as Record<
+                      string,
+                      Record<string, string>
+                  >)
+                : {};
         setData({
             name: provider.name,
             class: provider.class,
@@ -393,6 +559,7 @@ export default function Index({
                   ? [countries]
                   : [],
             market_values: marketValues,
+            market_extra_values: marketExtraValues,
             logo_url: provider.logo_url || '',
             is_active: provider.is_active,
         });
@@ -458,31 +625,31 @@ export default function Index({
                             regional availability for your transaction switch.
                         </p>
                     </div>
-                    <Button
-                        onClick={openCreateModal}
-                        className="cursor-pointer gap-2"
-                    >
-                        <Plus className="h-4 w-4" /> Add Provider
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        {providers.length > 0 && (
+                            <div className="relative">
+                                <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                                <Input
+                                    type="search"
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    placeholder="Search providers..."
+                                    className="w-48 pl-9 sm:w-64"
+                                />
+                            </div>
+                        )}
+                        <Button
+                            onClick={openCreateModal}
+                            className="shrink-0 cursor-pointer gap-2"
+                        >
+                            <Plus className="h-4 w-4" /> Add Provider
+                        </Button>
+                    </div>
                 </div>
 
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    {providers.map((provider) => {
-                        const countries = provider.config?.supported_countries;
-                        const codes = Array.isArray(countries)
-                            ? countries
-                            : countries
-                              ? [countries]
-                              : [];
-                        const driverOptions =
-                            availableDrivers.find(
-                                (d) => d.class === provider.class,
-                            )?.supported_country_options ?? [];
-                        const countryLabels = codes.map(
-                            (code) =>
-                                driverOptions.find((o) => o.code === code)
-                                    ?.name ?? code,
-                        );
+                    {filteredProviders.map((provider) => {
+                        const countryLabels = countryLabelsFor(provider);
 
                         return (
                             <Card
@@ -671,6 +838,18 @@ export default function Index({
                             </Button>
                         </div>
                     )}
+
+                    {providers.length > 0 && filteredProviders.length === 0 && (
+                        <div className="col-span-full rounded-xl border border-dashed border-neutral-300 p-12 text-center dark:border-neutral-700">
+                            <Search className="mx-auto mb-4 h-10 w-10 text-neutral-400" />
+                            <h3 className="font-semibold text-neutral-900 dark:text-neutral-100">
+                                No providers match "{search}"
+                            </h3>
+                            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                                Try a different name, driver or country.
+                            </p>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -706,7 +885,7 @@ export default function Index({
                     {selectedDriver === null ? (
                         <div className="flex min-h-0 flex-1 flex-col gap-4 py-2">
                             <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
-                                {availableDrivers.map((driver) => (
+                                {unusedDrivers.map((driver) => (
                                     <div
                                         key={driver.class}
                                         onClick={() => {
@@ -771,10 +950,11 @@ export default function Index({
                                     </div>
                                 ))}
 
-                                {availableDrivers.length === 0 && (
-                                    <div className="col-span-full py-6 text-center text-sm text-neutral-500">
-                                        No drivers discovered in
-                                        app/Http/Controllers/Providers/
+                                {unusedDrivers.length === 0 && (
+                                    <div className="col-span-full py-8 text-center text-sm text-neutral-500">
+                                        {availableDrivers.length === 0
+                                            ? 'No drivers discovered in app/Http/Controllers/Providers/'
+                                            : 'All available drivers have already been added.'}
                                     </div>
                                 )}
                             </div>
@@ -842,6 +1022,7 @@ export default function Index({
                                 {marketsCheckboxes(
                                     selectedDriver.supported_country_options,
                                     selectedDriver.market_field,
+                                    selectedDriver.market_extra,
                                 )}
 
                                 <div className="space-y-1">
@@ -1008,6 +1189,7 @@ export default function Index({
                             {marketsCheckboxes(
                                 editDriver?.supported_country_options ?? [],
                                 editDriver?.market_field,
+                                editDriver?.market_extra,
                             )}
 
                             <div className="space-y-1">
@@ -1202,6 +1384,79 @@ export default function Index({
                             ))}
                         </div>
                     )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Per-market integration dialog — collects the extra details some
+                markets need to complete the integration (e.g. Kazang's ZA/NA/BW
+                wallet method names + product id). Rendered with the app's Dialog
+                so it reliably stacks above the create/edit modal. */}
+            <Dialog
+                open={!!extraMarket}
+                onOpenChange={(open) => {
+                    if (!open) cancelExtraMarket();
+                }}
+            >
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Settings className="h-4 w-4" />
+                            {activeMarketExtra?.title ?? 'Market integration'}
+                            {extraMarket ? ` · ${extraMarket.code}` : ''}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {activeMarketExtra?.description}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="max-h-[55vh] space-y-3 overflow-y-auto pr-1">
+                        {activeMarketExtra?.fields.map((field) => (
+                            <div key={field.key} className="space-y-1">
+                                <Label>
+                                    {field.label}
+                                    {!field.required && (
+                                        <span className="text-neutral-400">
+                                            {' '}
+                                            (optional)
+                                        </span>
+                                    )}
+                                </Label>
+                                <Input
+                                    value={extraDraft[field.key] || ''}
+                                    onChange={(e) =>
+                                        setExtraDraft({
+                                            ...extraDraft,
+                                            [field.key]: e.target.value,
+                                        })
+                                    }
+                                    placeholder={
+                                        field.placeholder || field.label
+                                    }
+                                    className="h-9 text-sm"
+                                />
+                            </div>
+                        ))}
+                    </div>
+
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="soft"
+                            color="gray"
+                            onClick={cancelExtraMarket}
+                            className="cursor-pointer"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={saveExtraMarket}
+                            disabled={!extraDraftComplete}
+                            className="cursor-pointer"
+                        >
+                            Save integration
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </>

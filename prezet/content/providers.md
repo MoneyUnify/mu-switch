@@ -389,10 +389,10 @@ paste your API Key and App ID, and tick Malawi.
 ## Built-in driver: Kazang
 
 The platform ships a **Kazang** driver (`KazangController`) for **mobile-money
-request-to-pay in Zambia** through Kazang's **ContentReady** API — a wallet
-debit that pushes an approval prompt to the payer's handset and credits your
-Kazang wallet once they approve. ContentReady is session-based, so you provide
-your API user credentials plus the operator product IDs Kazang issues you:
+request-to-pay** through Kazang's **ContentReady** API — a wallet debit that
+pushes an approval prompt to the payer's handset and credits your Kazang wallet
+once they approve. ContentReady is session-based, so you provide your API user
+credentials plus the operator product IDs Kazang issues you:
 
 | Credential | Description |
 | --- | --- |
@@ -400,40 +400,54 @@ your API user credentials plus the operator product IDs Kazang issues you:
 | **API Password** | Your ContentReady API password. |
 | **API Channel** | The access channel Kazang created for you. |
 | **API Host** | Your ContentReady host (e.g. `testapi.kazang.net` for the test server). |
-| **MTN MoMo Product ID** | The `product_id` for the MTN wallet-debit product. |
-| **Airtel Pay Product ID** | The `product_id` for the Airtel Pay product. |
+| **MTN MoMo Product ID** | The `product_id` for the MTN wallet-debit product (Zambia). |
+| **Airtel Pay Product ID** | The `product_id` for the Airtel Pay product (Zambia). |
+| **Zamtel Money Product ID** | The `product_id` for the Zamtel Money Pay product (Zambia). |
 
 The driver logs in with `authClient` (caching the `session_uuid` for the session
-lifetime) and posts to `https://<host>/apimanager/api_rest/v1/<method>`. It
-implements the two operators whose flow keys on a **stable, session-independent
-reference**, so an initiate-then-poll model is safe:
+lifetime) and posts to `https://<host>/apimanager/api_rest/v1/<method>`.
+Zambia's three major wallets are implemented exactly as documented:
 
 - **MTN MoMo** — `mtnDebit` creates the pending debit and pushes the MTN prompt;
-  verification runs `mtnDebitApproval` → `mtnDebitApprovalConfirm` (keyed on
-  `supplier_transaction_id`).
+  verification runs `mtnDebitApproval` → `mtnDebitApprovalConfirm` (keyed on the
+  stable `supplier_transaction_id`).
 - **Airtel Pay** — `airtelPayPayment` → `airtelPayPaymentConfirm` pushes the
   Airtel prompt; verification runs `airtelPayQuery` → `airtelPayQueryConfirm`
   (keyed on `airtel_reference`, which Airtel lets you retry until it completes).
+- **Zamtel Money** — `zamtelMoneyPay` prompts the payer for their PIN on
+  Zamtel's USSD interface; `zamtelMoneyPayConfirm` returns the final "Payment
+  Successful" receipt, completing the payment immediately. If the confirm isn't
+  successful yet the collection stays pending and verification retries it.
 
 The operator is chosen from the payer's prefix (MTN `096x`/`076x`, Airtel
-`097x`/`077x`), overridable with an explicit `operator` (`mtn`/`airtel`).
-Amounts are converted to ngwee (K5.00 → `500`) automatically, and a call needs
-only the country, phone number and amount.
+`097x`/`077x`, Zamtel `095x`/`075x`), overridable with an explicit `operator`
+(`mtn`/`airtel`/`zamtel`). Amounts are converted to the currency's smallest
+unit (K5.00 → `500`) automatically, and a call needs only the country, phone
+number and amount.
 
-> **Pending is the safe default.** Because ContentReady is built for an in-person
-> vendor terminal, the exact "declined vs not-yet-approved" response codes are
-> best confirmed against a live Kazang account. To never mis-report money, the
-> switch promotes a transaction to **success only on an explicit success**, and
-> otherwise leaves it **pending** (re-check it with the
+> **Configurable markets (South Africa, Namibia, Botswana).** Kazang's other
+> markets ride the **same** ContentReady session and envelope — one `authClient`
+> login, one JSON POST per method, an operator-assigned `product_id` — but each
+> wallet's *pay-direction method names* are assigned per account (e.g. Namibia's
+> MTC Maris family). So these markets are **config-driven**: ticking one in the
+> provider dialog opens an **integration dialog** asking for that wallet's
+> Product ID and method names (payment, optional confirm, optional status
+> query/confirm, plus the phone-parameter and reference-field names, which
+> default to `wallet_msisdn` and `transaction_reference_str`). Get these from
+> your Kazang product list (`productList`) or account manager. With a status
+> query configured the push settles on verification (the Airtel pattern);
+> without one the confirmed receipt is final (the Zamtel/MTC pattern).
+
+> **Pending is the safe default.** To never mis-report money, the switch
+> promotes a transaction to **success only on an explicit success** of the
+> flow's final step, and otherwise leaves it **pending** (re-check it with the
 > [verify endpoint](/docs/api/verify-payment)); a failed *initiation* is
-> reported as failed so the switch can fall back.
-
-> **Zamtel** is intentionally not offered here: its `zamtelMoneyPay` flow keys on
-> a session-scoped confirmation number, which cannot be safely settled from a
-> later verification call.
+> reported as failed so the switch can fall back. A transaction that has already
+> settled is never re-queried or downgraded.
 
 To enable it, add a provider in the dashboard, choose the **Kazang** driver,
-paste your credentials, host and product IDs, and tick Zambia.
+paste your credentials, host and product IDs, tick the markets you serve, and
+complete the integration dialog for any non-Zambia market.
 
 ## Adding your own driver
 

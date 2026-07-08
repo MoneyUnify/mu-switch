@@ -158,6 +158,52 @@ test('creating a per-market provider fails when a ticked market has no value', f
     $this->assertDatabaseMissing('payment_providers', ['name' => 'Ting Missing']);
 });
 
+test('a market needing extra integration details stores them from the dialog', function () {
+    $user = User::factory()->create();
+
+    $kazangConfig = [
+        'username' => 'u', 'password' => 'p', 'channel' => 'web', 'host' => 'testapi.kazang.net',
+        'mtn_product_id' => '1', 'airtel_product_id' => '2', 'zamtel_product_id' => '3',
+    ];
+
+    $this->actingAs($user)
+        ->post(route('providers.store'), [
+            'name' => 'Kazang Multi',
+            'class' => 'App\\Http\\Controllers\\Providers\\KazangController',
+            'config' => $kazangConfig,
+            'supported_countries' => ['ZM', 'NA'],
+            'market_extra_values' => [
+                'NA' => ['product_id' => '7001', 'pay_method' => 'mtcMarisPay', 'pay_confirm_method' => 'mtcMarisPayConfirm'],
+            ],
+            'is_active' => 1,
+        ])
+        ->assertRedirect(route('providers.index'));
+
+    $provider = PaymentProvider::where('name', 'Kazang Multi')->first();
+    expect($provider->config['market_operators']['NA']['product_id'])->toBe('7001')
+        ->and($provider->config['market_operators']['NA']['pay_method'])->toBe('mtcMarisPay');
+});
+
+test('a market needing extra integration details is rejected without them', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->post(route('providers.store'), [
+            'name' => 'Kazang Incomplete',
+            'class' => 'App\\Http\\Controllers\\Providers\\KazangController',
+            'config' => [
+                'username' => 'u', 'password' => 'p', 'channel' => 'web', 'host' => 'testapi.kazang.net',
+                'mtn_product_id' => '1', 'airtel_product_id' => '2', 'zamtel_product_id' => '3',
+            ],
+            'supported_countries' => ['ZM', 'NA'],
+            // The NA integration dialog values are missing entirely.
+            'is_active' => 1,
+        ])
+        ->assertSessionHasErrors('market_extra_values.NA.product_id');
+
+    $this->assertDatabaseMissing('payment_providers', ['name' => 'Kazang Incomplete']);
+});
+
 test('user can update their own payment provider', function () {
     $user = User::factory()->create();
     $provider = PaymentProvider::create([

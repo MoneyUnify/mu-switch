@@ -53,6 +53,9 @@ class ProviderController extends Controller
                         'config_fields' => $this->configFieldsFor($className),
                         // Optional per-market input (e.g. an operator code for each ticked country).
                         'market_field' => $this->marketFieldFor($className),
+                        // Optional per-market integration dialog — a set of extra
+                        // inputs some countries need (e.g. Kazang's ZA/NA/BW).
+                        'market_extra' => $this->marketExtraFor($className),
                     ];
                 }
             }
@@ -169,6 +172,7 @@ class ProviderController extends Controller
         $config = $validated['config'];
         $config['supported_countries'] = array_values($validated['supported_countries']);
         $this->applyMarketValues($config, $request, $validated['class'], $validated['supported_countries']);
+        $this->applyMarketExtraValues($config, $request, $validated['class'], $validated['supported_countries']);
 
         $request->user()->paymentProviders()->create([
             'name' => $validated['name'],
@@ -219,6 +223,7 @@ class ProviderController extends Controller
 
         $config['supported_countries'] = array_values($validated['supported_countries']);
         $this->applyMarketValues($config, $request, $validated['class'], $validated['supported_countries']);
+        $this->applyMarketExtraValues($config, $request, $validated['class'], $validated['supported_countries']);
 
         $provider->update([
             'name' => $validated['name'],
@@ -268,6 +273,49 @@ class ProviderController extends Controller
         }
 
         $config[$marketField['key']] = $values;
+    }
+
+    /**
+     * The optional per-market integration dialog a driver declares for specific
+     * countries (a set of extra inputs, e.g. Kazang's ZA/NA/BW wallet methods).
+     *
+     * @return array{key: string, countries: list<string>, title: string, description: string, fields: list<array<string, mixed>>}|null
+     */
+    private function marketExtraFor(string $className): ?array
+    {
+        return $className !== '' && defined($className.'::MARKET_EXTRA_FIELDS') ? $className::MARKET_EXTRA_FIELDS : null;
+    }
+
+    /**
+     * Persist the extra integration values for ticked markets that require
+     * them, validating each market's required fields.
+     *
+     * @param  array<string, mixed>  $config
+     * @param  list<string>  $supportedCountries
+     */
+    private function applyMarketExtraValues(array &$config, Request $request, string $class, array $supportedCountries): void
+    {
+        $extra = $this->marketExtraFor($class);
+        if (! $extra) {
+            return;
+        }
+
+        $values = [];
+        foreach (array_intersect($supportedCountries, $extra['countries']) as $country) {
+            $entry = [];
+            foreach ($extra['fields'] as $field) {
+                $value = trim((string) $request->input("market_extra_values.{$country}.{$field['key']}", ''));
+                if ($value === '' && ($field['required'] ?? false)) {
+                    throw ValidationException::withMessages([
+                        "market_extra_values.{$country}.{$field['key']}" => "A {$field['label']} is required for {$country}.",
+                    ]);
+                }
+                $entry[$field['key']] = $value;
+            }
+            $values[$country] = $entry;
+        }
+
+        $config[$extra['key']] = $values;
     }
 
     /**
@@ -330,6 +378,12 @@ class ProviderController extends Controller
             // so the edit form can pre-fill each market's input.
             if ($marketField = $this->marketFieldFor($provider->class)) {
                 $safe[$marketField['key']] = $config[$marketField['key']] ?? [];
+            }
+
+            // Per-market integration values (method names + product ids) are
+            // not secret — send them so the dialog can pre-fill on edit.
+            if ($marketExtra = $this->marketExtraFor($provider->class)) {
+                $safe[$marketExtra['key']] = $config[$marketExtra['key']] ?? [];
             }
 
             $provider->setAttribute('config', $safe);
