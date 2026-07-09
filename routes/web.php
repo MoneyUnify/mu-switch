@@ -6,9 +6,14 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FeePolicyController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProviderController;
+use App\Support\Coverage;
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
-Route::inertia('/', 'welcome')->name('home');
+Route::get('/', fn () => Inertia::render('welcome', [
+    'countries' => Coverage::countries(),
+    'stats' => Coverage::stats(),
+]))->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
