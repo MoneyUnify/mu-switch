@@ -71,40 +71,42 @@ The built-in provider drivers collectively cover **32 countries** across Africa.
 
 ### Countries and currencies
 
-| Country | Code | Currency | Provider drivers |
-| --- | --- | --- | --- |
-| Benin | BJ | XOF | MTN MoMo, pawaPay, Ting |
-| Botswana | BW | BWP | Kazang |
-| Burkina Faso | BF | XOF | Flutterwave, pawaPay |
-| Cameroon | CM | XAF | Flutterwave, MTN MoMo, pawaPay, Ting |
-| Chad | TD | XAF | Airtel Money, Ting |
-| Congo-Brazzaville | CG | XAF | Airtel Money, MTN MoMo, pawaPay, Ting |
-| Côte d'Ivoire | CI | XOF | Flutterwave, MTN MoMo, pawaPay, Ting |
-| DR Congo | CD | CDF | Airtel Money, M-Pesa (Vodacom), pawaPay, Ting |
-| Eswatini | SZ | SZL | MTN MoMo, Ting |
-| Ethiopia | ET | ETB | pawaPay |
-| Gabon | GA | XAF | Airtel Money, pawaPay, Ting |
-| Ghana | GH | GHS | DPO Pay, Flutterwave, M-Pesa (Vodacom), MTN MoMo, pawaPay, Ting |
-| Guinea | GN | GNF | MTN MoMo, Ting |
-| Guinea-Bissau | GW | XOF | MTN MoMo, Ting |
-| Kenya | KE | KES | Airtel Money, DPO Pay, Flutterwave, M-Pesa (Kenya), pawaPay, Ting |
-| Lesotho | LS | LSL | M-Pesa (Vodacom), pawaPay, Ting |
-| Liberia | LR | LRD | MTN MoMo, Ting |
-| Madagascar | MG | MGA | Airtel Money |
-| Malawi | MW | MWK | Airtel Money, DPO Pay, Lenco, MobiPay, pawaPay, Ting |
-| Mozambique | MZ | MZN | DPO Pay, M-Pesa (Vodacom), pawaPay, Ting |
-| Namibia | NA | NAD | Kazang |
-| Niger | NE | XOF | Airtel Money, Ting |
-| Nigeria | NG | NGN | Airtel Money, DPO Pay, MTN MoMo, pawaPay, Ting |
-| Rwanda | RW | RWF | Airtel Money, DPO Pay, Flutterwave, MTN MoMo, pawaPay, Ting |
-| Senegal | SN | XOF | Flutterwave, pawaPay |
-| Seychelles | SC | SCR | Airtel Money, Ting |
-| Sierra Leone | SL | SLE | pawaPay |
-| South Africa | ZA | ZAR | Kazang, MTN MoMo, Ting |
-| South Sudan | SS | SSP | MTN MoMo, Ting |
-| Tanzania | TZ | TZS | Airtel Money, DPO Pay, Flutterwave, M-Pesa (Vodacom), pawaPay, Ting |
-| Uganda | UG | UGX | Airtel Money, DPO Pay, Flutterwave, MTN MoMo, pawaPay, Ting |
-| Zambia | ZM | ZMW | Airtel Money, cGrate, DPO Pay, Flutterwave, Kazang, Lenco, Lipila, MTN MoMo, pawaPay, Ting |
+Networks (MNOs) are the principal mobile-money operators reachable in each market through the listed providers — aggregators (pawaPay, Ting) auto-select the payer's operator, while operator-specific drivers route to a single network.
+
+| Country | Code | Currency | Networks (MNOs) | Providers |
+| --- | --- | --- | --- | --- |
+| Benin | BJ | XOF | MTN MoMo, Moov Money | MTN MoMo, pawaPay, Ting |
+| Botswana | BW | BWP | Orange Money, Mascom MyZaka, BTC Smega | Kazang |
+| Burkina Faso | BF | XOF | Orange Money, Moov Money | Flutterwave, pawaPay |
+| Cameroon | CM | XAF | MTN MoMo, Orange Money | Flutterwave, MTN MoMo, pawaPay, Ting |
+| Chad | TD | XAF | Airtel Money, Moov Money | Airtel Money, Ting |
+| Congo-Brazzaville | CG | XAF | MTN MoMo, Airtel Money | Airtel Money, MTN MoMo, pawaPay, Ting |
+| Côte d'Ivoire | CI | XOF | MTN MoMo, Orange Money, Moov Money, Wave | Flutterwave, MTN MoMo, pawaPay, Ting |
+| DR Congo | CD | CDF | Vodacom M-Pesa, Airtel Money, Orange Money | Airtel Money, M-Pesa (Vodacom), pawaPay, Ting |
+| Eswatini | SZ | SZL | MTN MoMo | MTN MoMo, Ting |
+| Ethiopia | ET | ETB | Safaricom M-Pesa, Telebirr | pawaPay |
+| Gabon | GA | XAF | Airtel Money, Moov Money | Airtel Money, pawaPay, Ting |
+| Ghana | GH | GHS | MTN MoMo, AirtelTigo Money, Telecel Cash | DPO Pay, Flutterwave, M-Pesa (Vodacom), MTN MoMo, pawaPay, Ting |
+| Guinea | GN | GNF | MTN MoMo, Orange Money | MTN MoMo, Ting |
+| Guinea-Bissau | GW | XOF | MTN MoMo, Orange Money | MTN MoMo, Ting |
+| Kenya | KE | KES | Safaricom M-Pesa, Airtel Money, T-Kash | Airtel Money, DPO Pay, Flutterwave, M-Pesa (Kenya), pawaPay, Ting |
+| Lesotho | LS | LSL | Vodacom M-Pesa, EcoCash | M-Pesa (Vodacom), pawaPay, Ting |
+| Liberia | LR | LRD | MTN MoMo, Orange Money | MTN MoMo, Ting |
+| Madagascar | MG | MGA | Airtel Money, Orange Money, MVola | Airtel Money |
+| Malawi | MW | MWK | Airtel Money, TNM Mpamba | Airtel Money, DPO Pay, Lenco, MobiPay, pawaPay, Ting |
+| Mozambique | MZ | MZN | Vodacom M-Pesa, e-Mola, mKesh | DPO Pay, M-Pesa (Vodacom), pawaPay, Ting |
+| Namibia | NA | NAD | MTC Money | Kazang |
+| Niger | NE | XOF | Airtel Money, Moov Money, Orange Money | Airtel Money, Ting |
+| Nigeria | NG | NGN | MTN MoMo, Airtel Money | Airtel Money, DPO Pay, MTN MoMo, pawaPay, Ting |
+| Rwanda | RW | RWF | MTN MoMo, Airtel Money | Airtel Money, DPO Pay, Flutterwave, MTN MoMo, pawaPay, Ting |
+| Senegal | SN | XOF | Orange Money, Free Money, Wave | Flutterwave, pawaPay |
+| Seychelles | SC | SCR | Airtel Money | Airtel Money, Ting |
+| Sierra Leone | SL | SLE | Orange Money, Africell Money | pawaPay |
+| South Africa | ZA | ZAR | MTN MoMo, Vodacom | Kazang, MTN MoMo, Ting |
+| South Sudan | SS | SSP | MTN MoMo | MTN MoMo, Ting |
+| Tanzania | TZ | TZS | Vodacom M-Pesa, Airtel Money, Tigo Pesa, Halopesa | Airtel Money, DPO Pay, Flutterwave, M-Pesa (Vodacom), pawaPay, Ting |
+| Uganda | UG | UGX | MTN MoMo, Airtel Money | Airtel Money, DPO Pay, Flutterwave, MTN MoMo, pawaPay, Ting |
+| Zambia | ZM | ZMW | MTN MoMo, Airtel Money, Zamtel Kwacha | Airtel Money, cGrate, DPO Pay, Flutterwave, Kazang, Lenco, Lipila, MTN MoMo, pawaPay, Ting |
 
 ### Providers and mobile networks
 
