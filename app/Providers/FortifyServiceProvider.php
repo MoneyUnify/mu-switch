@@ -21,7 +21,9 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        if (config('app.docs_only_routes')) {
+            Fortify::ignoreRoutes();
+        }
     }
 
     /**

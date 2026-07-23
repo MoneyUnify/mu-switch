@@ -38,7 +38,7 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            'serve' => ! config('app.docs_only_routes'),
             'throw' => false,
             'report' => false,
         ],

@@ -9,6 +9,7 @@ test('the landing page renders with the supported countries', function () {
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->component('welcome')
             ->has('countries')
+            ->where('githubUrl', 'https://github.com/moneyUnify/mu-switch')
             ->where('countries.0.code', fn ($code) => is_string($code) && strlen($code) === 2)
         );
 });

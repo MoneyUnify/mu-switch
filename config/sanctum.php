@@ -7,6 +7,8 @@ use Laravel\Sanctum\Sanctum;
 
 return [
 
+    'routes' => ! config('app.docs_only_routes'),
+
     /*
     |--------------------------------------------------------------------------
     | Stateful Domains

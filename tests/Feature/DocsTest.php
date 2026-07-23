@@ -69,6 +69,14 @@ test('the documentation header uses the MoneyUnify logo', function () {
         ->assertSee('/moneyunify-icon.png', false);
 });
 
+test('the documentation header home links route to the landing page', function () {
+    $this->get('/docs')
+        ->assertOk()
+        ->assertSee('aria-label="Home"', false)
+        ->assertSee('href="'.route('home').'"', false)
+        ->assertDontSee('href="'.url('/dashboard').'"', false);
+});
+
 test('in-page links resolve to valid /docs urls, not /docs/content', function () {
     $response = $this->get('/docs/index')->assertOk();
 

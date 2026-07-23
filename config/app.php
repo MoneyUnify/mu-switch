@@ -54,6 +54,11 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    'docs_only' => (bool) env('DOCS_ONLY', false),
+
+    'docs_only_routes' => (bool) env('DOCS_ONLY', false)
+        && ! (PHP_SAPI === 'cli' && in_array('wayfinder:generate', $_SERVER['argv'] ?? [], true)),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

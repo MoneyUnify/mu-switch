@@ -7,36 +7,47 @@ use App\Http\Controllers\FeePolicyController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\ProviderController;
 use App\Support\Coverage;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\View;
 use Inertia\Inertia;
 
 Route::get('/', fn () => Inertia::render('welcome', [
     'countries' => Coverage::countries(),
+    'githubUrl' => 'https://github.com/moneyUnify/mu-switch',
     'stats' => Coverage::stats(),
+    'docsOnly' => config('app.docs_only'),
 ]))->name('home');
 
-Route::middleware(['auth', 'verified'])->group(function () {
-    Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+if (! config('app.docs_only_routes')) {
+    Route::get('/up', fn (Request $request) => $request->expectsJson()
+        ? response()->json(['status' => 'up'])
+        : response(View::file(base_path('vendor/laravel/framework/src/Illuminate/Foundation/resources/health-up.blade.php'))));
 
-    Route::get('/api-token', [ApiTokenController::class, 'show'])
-        ->name('api-token.show');
+    Route::middleware(['auth', 'verified'])->group(function () {
+        Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
-    Route::post('/api-token/regenerate', [ApiTokenController::class, 'regenerate'])
-        ->name('api-token.regenerate');
+        Route::get('/api-token', [ApiTokenController::class, 'show'])
+            ->name('api-token.show');
 
-    Route::get('logs', [ApiLogController::class, 'index'])->name('logs.index');
+        Route::post('/api-token/regenerate', [ApiTokenController::class, 'regenerate'])
+            ->name('api-token.regenerate');
 
-    Route::get('providers', [ProviderController::class, 'index'])->name('providers.index');
-    Route::get('providers/{provider}/logs', [ProviderController::class, 'logs'])->name('providers.logs');
-    Route::post('providers', [ProviderController::class, 'store'])->name('providers.store');
-    Route::put('providers/{provider}', [ProviderController::class, 'update'])->name('providers.update');
-    Route::delete('providers/{provider}', [ProviderController::class, 'destroy'])->name('providers.destroy');
+        Route::get('logs', [ApiLogController::class, 'index'])->name('logs.index');
 
-    Route::get('payments', [PaymentController::class, 'index'])->name('payments.index');
+        Route::get('providers', [ProviderController::class, 'index'])->name('providers.index');
+        Route::get('providers/{provider}/logs', [ProviderController::class, 'logs'])->name('providers.logs');
+        Route::post('providers', [ProviderController::class, 'store'])->name('providers.store');
+        Route::put('providers/{provider}', [ProviderController::class, 'update'])->name('providers.update');
+        Route::delete('providers/{provider}', [ProviderController::class, 'destroy'])->name('providers.destroy');
 
-    Route::get('fee-policy', [FeePolicyController::class, 'show'])->name('fee-policy.show');
-    Route::put('fee-policy', [FeePolicyController::class, 'update'])->name('fee-policy.update');
-});
+        Route::get('payments', [PaymentController::class, 'index'])->name('payments.index');
 
-require __DIR__.'/settings.php';
+        Route::get('fee-policy', [FeePolicyController::class, 'show'])->name('fee-policy.show');
+        Route::put('fee-policy', [FeePolicyController::class, 'update'])->name('fee-policy.update');
+    });
+
+    require __DIR__.'/settings.php';
+}
+
 require __DIR__.'/prezet.php';

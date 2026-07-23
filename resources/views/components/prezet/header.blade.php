@@ -25,7 +25,7 @@
 
         <a
             aria-label="Home"
-            href="{{ route('prezet.index') }}"
+            href="{{ route('home') }}"
             class="block flex items-center space-x-2"
         >
             <x-prezet.logo />
@@ -40,8 +40,8 @@
         <x-prezet.search />
         <a
             class="group"
-            aria-label="Back to app"
-            href="{{ url('/dashboard') }}"
+            aria-label="Home"
+            href="{{ route('home') }}"
         >
             <svg
                 aria-hidden="true"

@@ -1,5 +1,6 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import { Button } from '@radix-ui/themes';
+import { Github } from 'lucide-react';
 import { dashboard, login, register } from '@/routes';
 
 interface Country {
@@ -15,7 +16,9 @@ interface Stats {
 
 interface WelcomeProps {
     countries?: Country[];
+    githubUrl?: string;
     stats?: Stats;
+    docsOnly?: boolean;
 }
 
 /** Turn an ISO alpha-2 code into its flag emoji (regional indicator symbols). */
@@ -82,7 +85,9 @@ function ScrollColumn({
 
 export default function Welcome({
     countries = [],
+    githubUrl = 'https://github.com/moneyUnify/mu-switch',
     stats = { countries: 0, providers: 0, currencies: 0 },
+    docsOnly = false,
 }: WelcomeProps) {
     const { auth } = usePage().props;
 
@@ -130,7 +135,7 @@ export default function Welcome({
                             MoneyUnify
                         </span>
                     </div>
-                    <nav className="flex items-center gap-2">
+                    <nav className="flex items-center gap-8">
                         <Button
                             asChild
                             size="2"
@@ -140,11 +145,27 @@ export default function Welcome({
                         >
                             <a href="/docs">Docs</a>
                         </Button>
-                        {auth.user ? (
+                        <Button
+                            asChild
+                            size="2"
+                            variant="ghost"
+                            color="gray"
+                            className="cursor-pointer"
+                        >
+                            <a
+                                href={githubUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label="MoneyUnify on GitHub"
+                            >
+                                <Github className="h-4 w-4" aria-hidden />
+                            </a>
+                        </Button>
+                        {!docsOnly && auth.user ? (
                             <Button asChild size="2" className="cursor-pointer">
                                 <Link href={dashboard()}>Dashboard</Link>
                             </Button>
-                        ) : (
+                        ) : !docsOnly ? (
                             <>
                                 <Button
                                     asChild
@@ -163,7 +184,7 @@ export default function Welcome({
                                     <Link href={register()}>Get Started</Link>
                                 </Button>
                             </>
-                        )}
+                        ) : null}
                     </nav>
                 </header>
 
@@ -240,7 +261,7 @@ export default function Welcome({
                         </dl>
 
                         <div className="mt-8 flex flex-wrap items-center gap-3">
-                            {auth.user ? (
+                            {!docsOnly && auth.user ? (
                                 <Button
                                     asChild
                                     size="3"
@@ -250,7 +271,7 @@ export default function Welcome({
                                         Go to Dashboard
                                     </Link>
                                 </Button>
-                            ) : (
+                            ) : !docsOnly ? (
                                 <Button
                                     asChild
                                     size="3"
@@ -258,7 +279,7 @@ export default function Welcome({
                                 >
                                     <Link href={register()}>Get Started</Link>
                                 </Button>
-                            )}
+                            ) : null}
                             <Button
                                 asChild
                                 size="3"
