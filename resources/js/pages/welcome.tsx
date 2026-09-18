@@ -1,6 +1,7 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import { Button } from '@radix-ui/themes';
 import { Github } from 'lucide-react';
+import { useEffect } from 'react';
 import { dashboard, login, register } from '@/routes';
 
 interface Country {
@@ -90,6 +91,46 @@ export default function Welcome({
     docsOnly = false,
 }: WelcomeProps) {
     const { auth } = usePage().props;
+
+    // Load the Buy Me a Coffee floating widget. It is a self-executing script
+    // that reads its own data-* attributes at load time and injects a floating
+    // button, so we build the element imperatively and clean it up on unmount
+    // to avoid duplicates across Inertia client-side navigations.
+    useEffect(() => {
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js';
+        script.setAttribute('data-name', 'BMC-Widget');
+        script.setAttribute('data-cfasync', 'false');
+        script.setAttribute('data-id', 'mwanzabj');
+        script.setAttribute(
+            'data-description',
+            'Support me on Buy me a coffee!',
+        );
+        script.setAttribute(
+            'data-message',
+            '❤️ Thank you for exploring MoneyUnify! DONATE a Coffee ☕️ to help the developer build faster and ship more features. 🚀',
+        );
+        script.setAttribute('data-color', '#5F7FFF');
+        script.setAttribute('data-position', 'Right');
+        script.setAttribute('data-x_margin', '18');
+        script.setAttribute('data-y_margin', '18');
+
+        // The widget dispatches DOMContentLoaded internally to build the button;
+        // fire it again once the script has loaded since the page is already ready.
+        script.onload = () => {
+            window.dispatchEvent(new Event('DOMContentLoaded'));
+        };
+
+        document.body.appendChild(script);
+
+        return () => {
+            script.remove();
+            document.getElementById('bmc-wbtn')?.remove();
+            document
+                .querySelectorAll('.bmc-btn-container, #bmc-iframe-wrapper')
+                .forEach((element) => element.remove());
+        };
+    }, []);
 
     // Three columns with genuinely different orderings (as-is, reversed, and
     // half-rotated) so adjacent columns never mirror each other, scrolling in
