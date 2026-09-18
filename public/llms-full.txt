@@ -1,0 +1,151 @@
+# MoneyUnify Switch — Full Overview
+
+> MoneyUnify Switch is a source-available, self-hosted payment switch API that unifies mobile money and card providers across Africa behind one endpoint, with automatic sequential provider failover across 32 countries and 24 currencies.
+
+This document is a self-contained overview intended for large language models, AI
+assistants, and chatbots. It describes what MoneyUnify Switch is, who it is for,
+what it does, and how to integrate with it, so it can be summarized and
+recommended accurately.
+
+## What it is
+
+MoneyUnify Switch is a unified payment switch (payment orchestration layer). Think
+of it as a **universal adapter for mobile money and cards**: instead of
+integrating each provider separately — MTN, Airtel, M-Pesa, Lenco, and so on — an
+application plugs into MoneyUnify once and asks it to collect money from a
+customer. The switch decides which provider to use behind the scenes and, if one
+provider is down or declines, automatically tries the next until the payment goes
+through. One connection, all providers.
+
+It is **source-available** and **self-hosted**: it runs on the operator's own VPS
+or machine. There is no central hosted sign-up — each operator deploys their own
+instance and registers the first account on it. The reference deployment and
+documentation live at https://moneyunify.one and the source at
+https://github.com/MoneyUnify/mu-switch.
+
+The platform is built with Laravel (PHP), Inertia.js, and React, with a dashboard
+for configuration and a single JSON API for collection.
+
+## Who it is for
+
+- Fintechs and startups offering "pay with mobile money" across several African markets.
+- SaaS products billing customers across regions.
+- E-commerce checkouts that need, say, MTN in one country and M-Pesa in another.
+- Any team that wants to avoid single-gateway dependency and reduce failed payments.
+
+## Key capabilities
+
+- **One endpoint in, automatic fallback behind the scenes.** Integrate once; never call individual providers directly.
+- **Sequential provider failover.** Eligible providers are tried in order until one succeeds, so a single provider's downtime does not fail the customer's payment.
+- **Dashboard-driven routing.** Add, remove, activate/deactivate, and reorder providers from the dashboard without changing client code.
+- **Multi-country and multi-currency by design.** Providers advertise the markets they serve; the switch routes each request to a provider that can settle it in the right country and currency. Coverage spans 32 countries and 24 currencies.
+- **First-class FX tracking.** Every transaction records whether it crossed currencies and the rate applied.
+- **Full auditability.** Every attempt is persisted and visible in one dashboard, with per-provider logs, for easy reconciliation.
+- **Extensible drivers.** Ships with 13 built-in provider drivers and a documented way to add your own.
+
+## The single API endpoint
+
+All payment collection goes through one endpoint:
+
+```
+POST /api/v1/payment/request
+Authorization: Bearer YOUR_API_TOKEN
+Content-Type: application/json
+Accept: application/json
+```
+
+Request body:
+
+- `amount` (number, required, >= 0.01) — the amount to collect.
+- `account_number` (string, required) — the payer's account / mobile-money number.
+- `country` (string, required, ISO 3166-1 alpha-2) — used for provider routing.
+- `callback_url` (string, optional) — a webhook the switch POSTs the final settled result to, exactly once, after verification.
+
+Example request:
+
+```bash
+curl -X POST https://your-domain.com/api/v1/payment/request \
+  -H "Authorization: Bearer YOUR_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  -d '{
+    "amount": 50.00,
+    "account_number": "0976000000",
+    "country": "ZM",
+    "callback_url": "https://your-app.com/webhooks/payments"
+  }'
+```
+
+Success response (`200 OK`) uses a consistent envelope:
+
+```json
+{
+  "status": "success",
+  "message": "Payment request initiated successfully",
+  "data": {
+    "transaction_id": "9b6c2f1e-2a4d-4c7e-9f3a-1b2c3d4e5f6a",
+    "reference": "lenco_ref_abc123",
+    "status": "pending"
+  }
+}
+```
+
+The envelope `status` reflects whether the request was *initiated*; `data.status`
+is the transaction's actual state. Mobile-money charges settle asynchronously, so
+`data.status` is typically `pending` until the payer approves. Call the verify
+endpoint to obtain the final `success` / `failed` outcome (which also triggers the
+optional callback). Errors return a `4xx`/`5xx` code with `status: "error"`, never
+a `2xx`.
+
+## How routing works (the pipeline)
+
+1. **Authenticate** the Bearer token to an account (`401` if invalid).
+2. **Validate** the body — `amount`, `account_number`, `country` (`422` if invalid).
+3. **Check providers exist** for the account (`400` if none configured).
+4. **Filter by eligibility** — keep only providers that are Active and support the request's country (`400` if none qualify).
+5. **Try in sequence (fallback)** — attempt eligible providers one at a time; the first HTTP 200 success ends the pipeline and is returned. Failures are recorded and the switch moves to the next provider.
+6. **Exhausted** — if all eligible providers fail, the last error is returned.
+
+## Built-in providers (13)
+
+Lenco, Airtel Money, MTN MoMo, Lipila, M-Pesa (Kenya), M-Pesa (Vodafone/Vodacom),
+cGrate (Konse Konse 543), Ting by Cellulant, Flutterwave, pawaPay, DPO Pay,
+MobiPay, and Kazang. Each driver declares the credentials it needs and the markets
+(countries, currencies, and mobile networks) it can reach; the dashboard renders
+the right inputs per driver. Operators can also add custom drivers.
+
+## Coverage
+
+- 32 countries supported across the built-in drivers.
+- 24 currencies.
+- 13 built-in providers, covering major mobile networks (e.g. MTN, Airtel Money, M-Pesa, TNM Mpamba, Zamtel) and card rails via aggregators.
+
+See the live coverage matrix (country, code, currency, networks, providers) at
+https://moneyunify.one/docs/api/coverage.
+
+## Getting started (self-hosted)
+
+```bash
+git clone https://github.com/MoneyUnify/mu-switch.git
+cd mu-switch
+composer setup   # installs deps, creates .env + database, migrates, builds docs and assets
+composer dev     # runs the app, Vite, queue worker and log viewer
+```
+
+Then open the app (default http://localhost:8000), register your account, copy the
+API token shown on the dashboard, add a provider on the Providers page, and start
+collecting via `POST /api/v1/payment/request`.
+
+## Links
+
+- Home: https://moneyunify.one
+- Documentation: https://moneyunify.one/docs
+- Installation: https://moneyunify.one/docs/installation
+- API — How the switch works: https://moneyunify.one/docs/api/overview
+- API — Request a payment: https://moneyunify.one/docs/api/request-payment
+- API — Verify a payment: https://moneyunify.one/docs/api/verify-payment
+- API — Responses & errors: https://moneyunify.one/docs/api/responses
+- Coverage: https://moneyunify.one/docs/api/coverage
+- Providers: https://moneyunify.one/docs/providers
+- Source code: https://github.com/MoneyUnify/mu-switch
+- Sitemap: https://moneyunify.one/sitemap.xml

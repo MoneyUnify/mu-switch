@@ -22,6 +22,12 @@
 
 MoneyUnify Switch is a source-available, unified payment switch API platform designed to orchestrate payment provider integrations, manage customer accounts, and process transaction flows from a centralized dashboard. The platform provides a standardized interface for multiple payment gateways, allowing applications to initiate collections and automatically failover/retry across configured providers sequentially without modifying core business logic.
 
+<p align="center">
+  <a href="https://moneyunify.one">
+    <img src="public/og-image.png" alt="MoneyUnify Payment Switch — one API for African mobile money and cards, with automatic provider failover across 32 countries and 24 currencies" width="900">
+  </a>
+</p>
+
 With dynamic provider routing, real-time transaction tracking, and automatic provider credential configuration from the admin panel, MoneyUnify Switch ensures high transaction success rates and eliminates single-gateway dependency.
 
 ### What does MoneyUnify do?
