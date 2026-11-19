@@ -2,7 +2,7 @@
 
 ![MoneyUnify Logo](public/moneyunify-logo-horizontal.png)
 
-> **PayPal AI Hackathon 2026 entry: MoneyUnify-PayPal.** MoneyUnify is an
+> **MoneyUnify + PayPal: PayPal to mobile money.** MoneyUnify is an
 > open-source payment engine that connects PayPal to African mobile money. A
 > business integrates it once and can take PayPal payments from anyone in the
 > world and settle them straight to a mobile-money wallet, in local currency,
@@ -22,7 +22,7 @@
   - [Operating model and compliance](#operating-model-and-compliance)
   - [Built with](#built-with)
   - [Run it yourself](#run-it-yourself)
-  - [Build status](#build-status)
+  - [Capabilities](#capabilities)
 - [Introduction and Objective](#introduction-and-objective)
   - [What does MoneyUnify do?](#what-does-moneyunify-do)
   - [Documentation](#documentation)
@@ -328,10 +328,10 @@ accounts, so it never moves real money):
 php artisan payouts:check {provider_id}
 ```
 
-### Build status
+### Capabilities
 
-The switch existed before the hackathon. Everything below was built during it,
-following the [Implementation Guide](IMPLEMENTATION_GUIDE.md).
+The MoneyUnify switch is the foundation; the PayPal-to-mobile-money capabilities
+below build on top of it and ship in the platform today.
 
 - [x] PayPal collection: Orders v2, webhooks, guest card checkout, and PayPal's JS SDK v6 button on pay pages
 - [x] PayPal FX as a Service: quotes at PayPal's own rates, locked to orders, with MoneyUnify's rates as the fallback
@@ -584,7 +584,7 @@ composer setup --demo-data
    refunded transfers, a merchant with a pay link and settled payments, an
    assistant conversation, the ledger and treasury balances. It's made by the
    app's own flows with PayPal's replies simulated, so nothing reaches PayPal and
-   no money moves. Payouts use [Simulated Payouts](#try-it-end-to-end-judges-and-testers).
+   no money moves. Payouts use [Simulated Payouts](#run-it-yourself).
    To make new payments, add your PayPal sandbox app on the **Providers** page,
    or set `PAYPAL_SANDBOX_CLIENT_ID` and `PAYPAL_SANDBOX_CLIENT_SECRET` in `.env`
    first and it's added for you. On an existing install, run `php artisan demo:seed`.
