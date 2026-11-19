@@ -52,4 +52,48 @@ function TooltipContent({
   )
 }
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
+interface DisabledTooltipProps {
+  disabled: boolean;
+  content?: React.ReactNode;
+  children: React.ReactNode;
+  side?: "top" | "right" | "bottom" | "left";
+  className?: string;
+}
+
+function DisabledTooltip({
+  disabled,
+  content,
+  children,
+  side = "top",
+  className,
+}: DisabledTooltipProps) {
+  if (!disabled || !content) {
+    return <>{children}</>;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          tabIndex={0}
+          className={cn("inline-flex cursor-not-allowed outline-none", className)}
+        >
+          {React.isValidElement(children)
+            ? React.cloneElement(
+                children as React.ReactElement<{ className?: string }>,
+                {
+                  className: cn(
+                    (children as React.ReactElement<{ className?: string }>).props.className,
+                    "pointer-events-none"
+                  ),
+                }
+              )
+            : children}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side={side}>{content}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, DisabledTooltip }

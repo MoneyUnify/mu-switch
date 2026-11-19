@@ -1,9 +1,9 @@
 <?php
 
+use App\Models\User;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use App\Models\User;
 
 return new class extends Migration
 {
@@ -22,6 +22,13 @@ return new class extends Migration
             $table->boolean('is_active')->default(true); // To enable/disable providers without deleting them
             $table->timestamps();
         });
+
+        // The transactions table is created before payment_providers and
+        // customers, so its foreign keys to both are added here.
+        Schema::table('transactions', function (Blueprint $table) {
+            $table->foreign('payment_provider_id')->references('id')->on('payment_providers')->onDelete('cascade');
+            $table->foreign('customer_id')->references('id')->on('customers')->onDelete('cascade');
+        });
     }
 
     /**
@@ -29,6 +36,11 @@ return new class extends Migration
      */
     public function down(): void
     {
+        Schema::table('transactions', function (Blueprint $table) {
+            $table->dropForeign(['payment_provider_id']);
+            $table->dropForeign(['customer_id']);
+        });
+
         Schema::dropIfExists('payment_providers');
     }
 };

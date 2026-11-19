@@ -1,62 +1,146 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-        <loc>http://localhost:8000/docs/api/coverage</loc>
-        <lastmod>2026-07-09T17:02:49+00:00</lastmod>
+        <loc>http://localhost/docs/mcp</loc>
+        <lastmod>2026-10-18T10:55:54+00:00</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.7</priority>
     </url>
     <url>
-        <loc>http://localhost:8000/docs/api-tokens</loc>
-        <lastmod>2026-06-27T12:34:12+00:00</lastmod>
+        <loc>http://localhost/docs/api/merchants</loc>
+        <lastmod>2026-10-19T12:44:05+00:00</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.7</priority>
     </url>
     <url>
-        <loc>http://localhost:8000/docs/api/authentication</loc>
-        <lastmod>2026-06-27T12:34:12+00:00</lastmod>
+        <loc>http://localhost/docs/api/refunds</loc>
+        <lastmod>2026-10-17T17:57:42+00:00</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.7</priority>
     </url>
     <url>
-        <loc>http://localhost:8000/docs/api/overview</loc>
-        <lastmod>2026-06-27T12:34:12+00:00</lastmod>
+        <loc>http://localhost/docs/merchants</loc>
+        <lastmod>2026-10-17T18:50:28+00:00</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.7</priority>
     </url>
     <url>
-        <loc>http://localhost:8000/docs/api/request-payment</loc>
-        <lastmod>2026-06-27T17:36:18+00:00</lastmod>
+        <loc>http://localhost/docs/ai-and-mcp</loc>
+        <lastmod>2026-10-19T21:24:52+00:00</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.7</priority>
     </url>
     <url>
-        <loc>http://localhost:8000/docs/api/responses</loc>
-        <lastmod>2026-06-27T17:30:41+00:00</lastmod>
+        <loc>http://localhost/docs/api/cross-border-transfers</loc>
+        <lastmod>2026-11-04T10:43:06+00:00</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.7</priority>
     </url>
     <url>
-        <loc>http://localhost:8000/docs/api/verify-payment</loc>
-        <lastmod>2026-06-27T17:25:47+00:00</lastmod>
+        <loc>http://localhost/docs/api/fx</loc>
+        <lastmod>2026-10-18T10:45:54+00:00</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.7</priority>
     </url>
     <url>
-        <loc>http://localhost:8000/docs/index</loc>
-        <lastmod>2026-07-01T19:53:19+00:00</lastmod>
+        <loc>http://localhost/docs/api/payouts</loc>
+        <lastmod>2026-11-04T10:42:59+00:00</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.7</priority>
     </url>
     <url>
-        <loc>http://localhost:8000/docs/installation</loc>
-        <lastmod>2026-06-30T23:13:57+00:00</lastmod>
+        <loc>http://localhost/docs/api/quote-payment</loc>
+        <lastmod>2026-10-15T12:30:54+00:00</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.7</priority>
     </url>
     <url>
-        <loc>http://localhost:8000/docs/providers</loc>
-        <lastmod>2026-08-19T19:52:01+00:00</lastmod>
+        <loc>http://localhost/docs/treasury</loc>
+        <lastmod>2026-10-15T18:39:40+00:00</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>http://localhost/docs/api/coverage</loc>
+        <lastmod>2026-10-18T14:16:01+00:00</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>http://localhost/docs/api-tokens</loc>
+        <lastmod>2026-10-15T06:46:11+00:00</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>http://localhost/docs/api/authentication</loc>
+        <lastmod>2026-10-15T06:46:11+00:00</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>http://localhost/docs/api/overview</loc>
+        <lastmod>2026-10-30T01:26:11+00:00</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>http://localhost/docs/api/request-payment</loc>
+        <lastmod>2026-10-18T17:01:30+00:00</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>http://localhost/docs/api/responses</loc>
+        <lastmod>2026-10-15T12:30:54+00:00</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>http://localhost/docs/api/verify-payment</loc>
+        <lastmod>2026-10-15T06:46:11+00:00</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>http://localhost/docs/index</loc>
+        <lastmod>2026-10-15T06:46:11+00:00</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>http://localhost/docs/installation</loc>
+        <lastmod>2026-10-19T21:59:14+00:00</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>http://localhost/docs/providers</loc>
+        <lastmod>2026-11-04T10:42:47+00:00</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>http://localhost/docs/deploy-render</loc>
+        <lastmod>2026-10-30T02:02:26+00:00</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>http://localhost/docs/docker</loc>
+        <lastmod>2026-10-19T21:59:14+00:00</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>http://localhost/docs/docker-production</loc>
+        <lastmod>2026-11-04T13:00:36+00:00</lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.7</priority>
+    </url>
+    <url>
+        <loc>http://localhost/docs/api/postman</loc>
+        <lastmod>2026-10-30T01:26:27+00:00</lastmod>
         <changefreq>weekly</changefreq>
         <priority>0.7</priority>
     </url>

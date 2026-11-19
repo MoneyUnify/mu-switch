@@ -1,24 +1,28 @@
-name: linter
+name: lint
 
+# Pushes to main run this through deploy.yml, which deploys once it passes.
 on:
   push:
     branches:
       - develop
-      - main
-      - master
-      - workos
   pull_request:
     branches:
       - develop
       - main
-      - master
-      - workos
+  workflow_call:
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  # Called from deploy.yml, it shares that run's group instead.
+  group: lint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   quality:
+    name: Code style and types
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -29,23 +33,35 @@ jobs:
         uses: shivammathur/setup-php@7c071dfe9dc99bdf297fa79cb49ea005b9fcadbc # v2
         with:
           php-version: '8.4'
+          tools: composer:v2
 
-      - name: Install Dependencies
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
         run: |
-          composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
-          npm install
+          composer install --no-interaction --no-scripts --no-progress --prefer-dist
+          npm ci
 
-      - name: Run Pint
-        run: composer lint
+      # ESLint and TypeScript read the generated @/actions and @/routes files.
+      - name: Generate route types (Wayfinder)
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          php artisan wayfinder:generate --with-form
 
-      - name: Format Frontend
-        run: npm run format
+      # Checks only: these fail the build instead of fixing files.
+      - name: PHP code style (Pint)
+        run: composer lint:check
 
-      - name: Lint Frontend
-        run: npm run lint
+      - name: Front-end formatting (Prettier)
+        run: npm run format:check
 
-      # - name: Commit Changes
-      #   uses: stefanzweifel/git-auto-commit-action@v7
-      #   with:
-      #     commit_message: fix code style
-      #     commit_options: '--no-verify'
+      - name: Front-end lint (ESLint)
+        run: npm run lint:check
+
+      - name: TypeScript types
+        run: npm run types:check

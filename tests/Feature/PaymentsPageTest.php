@@ -85,7 +85,8 @@ test('the payments page aggregates metrics, currencies and countries scoped to t
             ->where('metrics.success', 2)
             ->where('metrics.failed', 1)
             ->where('metrics.pending', 1)
-            ->where('metrics.volume', 150)
+            ->where('metrics.volumes.0', ['currency' => 'ZMW', 'amount' => 150, 'count' => 2])
+            ->has('metrics.volumes', 6)
             ->where('metrics.successRate', 50)
             ->where('topCurrencies.0.currency', 'ZMW')
             ->where('topCurrencies.0.count', 3)
@@ -130,4 +131,26 @@ test('the payments table can be filtered by status', function () {
             // Metrics still reflect the whole window, not just the filtered status.
             ->where('metrics.total', 3)
         );
+});
+
+test('payment volume is shown per currency, never added across currencies', function () {
+    $user = User::factory()->create();
+    $customer = Customer::create(['name' => 'Mixed', 'email' => 'mixed@example.com']);
+    $provider = paymentsProvider($user);
+
+    makeTransaction($provider, $customer, ['currency' => 'ZMW', 'status' => TransactionStatus::SUCCESS, 'amount' => 100]);
+    makeTransaction($provider, $customer, ['currency' => 'ZMW', 'status' => TransactionStatus::SUCCESS, 'amount' => 12.5]);
+    makeTransaction($provider, $customer, ['currency' => 'USD', 'status' => TransactionStatus::SUCCESS, 'amount' => 1]);
+    makeTransaction($provider, $customer, ['currency' => 'KES', 'status' => TransactionStatus::FAILED, 'amount' => 900]);
+
+    $this->actingAs($user)
+        ->get(route('payments.index', ['range' => 'all']))
+        ->assertInertia(fn (Assert $page) => $page
+            // Busiest currency first; failed payments add no volume.
+            ->where('metrics.volumes.0', ['currency' => 'ZMW', 'amount' => 112.5, 'count' => 2])
+            ->where('metrics.volumes.1', ['currency' => 'USD', 'amount' => 1, 'count' => 1])
+            // Then the next most recent currency, with no volume yet.
+            ->where('metrics.volumes.2', ['currency' => 'KES', 'amount' => 0, 'count' => 0])
+            ->has('metrics.volumes', 6)
+            ->missing('metrics.volume'));
 });

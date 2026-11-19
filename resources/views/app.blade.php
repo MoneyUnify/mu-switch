@@ -6,7 +6,7 @@
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
         {{-- Primary SEO meta --}}
-        <meta name="description" content="MoneyUnify Switch is a source-available, self-hosted payment switch API that unifies mobile money and cards across Africa. Collect through one endpoint — POST /api/v1/payment/request — with automatic, sequential provider failover across 32 countries and 24 currencies.">
+        <meta name="description" content="MoneyUnify Switch is an open-source, self-hosted payment switch API that unifies mobile money and cards across Africa. Collect through one endpoint — POST /api/v1/payment/request — with automatic, sequential provider failover across 32 countries and 24 currencies.">
         <meta name="keywords" content="payment switch, mobile money API, payment orchestration, provider failover, collections API, MTN, Airtel Money, M-Pesa, TNM Mpamba, Africa payments, self-hosted payment gateway, MoneyUnify">
         <meta name="author" content="Blessed Jason Mwanza">
         <meta name="robots" content="index, follow">
@@ -17,7 +17,7 @@
         <meta property="og:type" content="website">
         <meta property="og:site_name" content="MoneyUnify Switch">
         <meta property="og:title" content="MoneyUnify Payment Switch — one API for African mobile money & cards">
-        <meta property="og:description" content="Orchestrate, route, and optimize payments across providers. Source-available and self-hosted, with automatic failover across 32 countries and 24 currencies.">
+        <meta property="og:description" content="Orchestrate, route, and optimize payments across providers. Open-source and self-hosted, with automatic failover across 32 countries and 24 currencies.">
         <meta property="og:url" content="{{ url()->current() }}">
         <meta property="og:image" content="{{ url('/og-image.png') }}">
         <meta property="og:image:type" content="image/png">
@@ -29,7 +29,7 @@
         {{-- Twitter / X card --}}
         <meta name="twitter:card" content="summary_large_image">
         <meta name="twitter:title" content="MoneyUnify Payment Switch — one API for African mobile money & cards">
-        <meta name="twitter:description" content="Source-available, self-hosted payment switch. One endpoint, automatic provider failover across 32 countries and 24 currencies.">
+        <meta name="twitter:description" content="Open-source, self-hosted payment switch. One endpoint, automatic provider failover across 32 countries and 24 currencies.">
         <meta name="twitter:image" content="{{ url('/og-image.png') }}">
         <meta name="twitter:image:alt" content="MoneyUnify Payment Switch landing page showing supported African countries, providers and currencies">
 
@@ -63,7 +63,7 @@
         </style>
 
         <link rel="icon" href="/favicon.ico" sizes="any">
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        <link rel="icon" href="/favicon-96x96.png" type="image/png" sizes="96x96">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
         @fonts

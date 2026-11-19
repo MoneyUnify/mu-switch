@@ -1,29 +1,35 @@
 name: tests
 
+# Pushes to main run this through deploy.yml, which deploys once it passes.
 on:
   push:
     branches:
       - develop
-      - main
-      - master
-      - workos
   pull_request:
     branches:
       - develop
       - main
-      - master
-      - workos
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Called from deploy.yml, it shares that run's group instead.
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  ci:
+  sqlite:
+    name: Tests (PHP ${{ matrix.php-version }}, SQLite)
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         php-version: ['8.4', '8.5']
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           persist-credentials: false
 
@@ -31,28 +37,103 @@ jobs:
         uses: shivammathur/setup-php@7c071dfe9dc99bdf297fa79cb49ea005b9fcadbc # v2
         with:
           php-version: ${{ matrix.php-version }}
+          extensions: intl, bcmath, gd, zip, pdo_sqlite
           tools: composer:v2
-          coverage: xdebug
+          coverage: none
 
       - name: Setup Node
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: '22'
+          cache: npm
 
-      - name: Install Node Dependencies
-        run: npm i
+      - name: Install dependencies
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          npm ci
 
-      - name: Install Dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+      - name: Prepare the app
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          php artisan docs:index --fresh
 
-      - name: Copy Environment File
-        run: cp .env.example .env
-
-      - name: Generate Application Key
-        run: php artisan key:generate
-
-      - name: Build Assets
+      - name: Build assets
         run: npm run build
 
       - name: Tests
         run: ./vendor/bin/pest
+
+  postgres:
+    name: Tests (PHP 8.4, Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: moneyunify_test
+          POSTGRES_USER: moneyunify
+          POSTGRES_PASSWORD: moneyunify
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U moneyunify -d moneyunify_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    # Hosted deployments run on Postgres, so the whole suite runs on it too.
+    env:
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: moneyunify_test
+      DB_USERNAME: moneyunify
+      DB_PASSWORD: moneyunify
+      DB_URL: ''
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@7c071dfe9dc99bdf297fa79cb49ea005b9fcadbc # v2
+        with:
+          php-version: '8.4'
+          extensions: intl, bcmath, gd, zip, pdo_pgsql
+          tools: composer:v2
+          coverage: none
+
+      - name: Setup Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          npm ci
+
+      - name: Prepare the app
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          php artisan docs:index --fresh
+
+      - name: Build assets
+        run: npm run build
+
+      - name: Tests
+        run: ./vendor/bin/pest
+
+  docker:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      # The same image Render deploys; a broken Dockerfile fails here first.
+      - name: Build the image
+        run: docker build --tag moneyunify:ci .

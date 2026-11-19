@@ -1,4 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
+import { Button, Select, TextField } from '@radix-ui/themes';
 import {
     Activity,
     ArrowDownLeft,
@@ -13,17 +14,25 @@ import {
     TrendingUp,
     XCircle,
 } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
+import type { ReactNode } from 'react';
 import { toast } from 'sonner';
-import { Button, Select, TextField } from '@radix-ui/themes';
-import { ActivityAreaChart } from '@/components/activity-area-chart';
+import {
+    ActivityAreaChart,
+    getCurrencyColor,
+} from '@/components/activity-area-chart';
+import type {
+    ActivityPoint,
+    TrendCurrency,
+} from '@/components/activity-area-chart';
+import { TableFooter } from '@/components/table-footer';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 import { dashboard } from '@/routes';
 import providersRoute from '@/routes/providers';
-import { cn } from '@/lib/utils';
 
 interface Paginated<T> {
     data: T[];
@@ -41,23 +50,26 @@ interface Stat {
     change: number | null;
 }
 
+interface CurrencyVolume {
+    currency: string;
+    value: number;
+    change: number | null;
+    count: number;
+}
+
 interface DashboardProps {
     apiToken: string | null;
     currency: string;
     hasProviders: boolean;
     stats: {
-        volume: Stat;
+        volume: Stat & { currencies?: CurrencyVolume[] };
         transactions: Stat;
         successRate: Stat;
         activeProviders: { value: number; total: number };
         failed: Stat;
     };
-    volumeTrend: {
-        date: string;
-        label: string;
-        count: number;
-        volume: number;
-    }[];
+    volumeTrend: ActivityPoint[];
+    trendCurrencies?: TrendCurrency[];
     statusBreakdown: Record<string, number>;
     providerPerformance: Paginated<{
         id: number;
@@ -120,6 +132,7 @@ function formatMoney(amount: number, currency: string): string {
         return new Intl.NumberFormat('en-US', {
             style: 'currency',
             currency,
+            currencyDisplay: 'narrowSymbol',
             maximumFractionDigits: amount >= 1000 ? 0 : 2,
         }).format(amount);
     } catch {
@@ -129,118 +142,6 @@ function formatMoney(amount: number, currency: string): string {
 
 function formatNumber(value: number): string {
     return value.toLocaleString();
-}
-
-interface PageMeta {
-    from: number | null;
-    to: number | null;
-    total: number;
-    per_page: number;
-    last_page: number;
-    links: { url: string | null; label: string; active: boolean }[];
-}
-
-/**
- * Pagination footer for a dashboard table: a results summary, an adjustable
- * per-page selector, and numbered page links — all via partial Inertia reloads
- * so the two tables page independently without reloading the whole dashboard.
- */
-function TableFooter({
-    page,
-    only,
-    perPageKey,
-    pageName,
-    perPageOptions,
-}: {
-    page: PageMeta;
-    only: string[];
-    perPageKey: string;
-    pageName: string;
-    perPageOptions: number[];
-}) {
-    if (page.total === 0) {
-        return null;
-    }
-
-    const changePerPage = (value: string) => {
-        const params = new URLSearchParams(window.location.search);
-        params.set(perPageKey, value);
-        params.delete(pageName); // back to the first page at the new size
-        router.get(
-            `${window.location.pathname}?${params.toString()}`,
-            {},
-            { only, preserveState: true, preserveScroll: true, replace: true },
-        );
-    };
-
-    return (
-        <div className="mt-4 flex flex-col gap-3 border-t border-sidebar-border/50 pt-3 text-sm sm:flex-row sm:items-center sm:justify-between dark:border-sidebar-border/70">
-            <div className="flex items-center gap-3 text-xs text-neutral-500 dark:text-neutral-400">
-                <span>
-                    Showing{' '}
-                    <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">
-                        {page.from ?? 0}
-                    </span>
-                    –
-                    <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">
-                        {page.to ?? 0}
-                    </span>{' '}
-                    of{' '}
-                    <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">
-                        {page.total.toLocaleString()}
-                    </span>
-                </span>
-                <span className="flex items-center gap-1.5">
-                    <span>Per page</span>
-                    <Select.Root
-                        value={String(page.per_page)}
-                        onValueChange={changePerPage}
-                    >
-                        <Select.Trigger variant="surface" />
-                        <Select.Content>
-                            {perPageOptions.map((option) => (
-                                <Select.Item
-                                    key={option}
-                                    value={String(option)}
-                                >
-                                    {option}
-                                </Select.Item>
-                            ))}
-                        </Select.Content>
-                    </Select.Root>
-                </span>
-            </div>
-
-            {page.last_page > 1 && (
-                <div className="flex flex-wrap items-center gap-1">
-                    {page.links.map((link, i) =>
-                        link.url ? (
-                            <Link
-                                key={i}
-                                href={link.url}
-                                only={only}
-                                preserveState
-                                preserveScroll
-                                className={cn(
-                                    'min-w-8 rounded-md px-2.5 py-1 text-center text-xs transition-colors',
-                                    link.active
-                                        ? 'bg-primary text-primary-foreground'
-                                        : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
-                                )}
-                                dangerouslySetInnerHTML={{ __html: link.label }}
-                            />
-                        ) : (
-                            <span
-                                key={i}
-                                className="min-w-8 px-2.5 py-1 text-center text-xs text-neutral-300 dark:text-neutral-700"
-                                dangerouslySetInnerHTML={{ __html: link.label }}
-                            />
-                        ),
-                    )}
-                </div>
-            )}
-        </div>
-    );
 }
 
 function TrendPill({
@@ -293,18 +194,107 @@ function StatCard({
     footer: ReactNode;
 }) {
     return (
-        <Card className="gap-0 border border-sidebar-border/70 p-5 dark:border-sidebar-border">
-            <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
-                    {title}
-                </span>
-                <span className="text-neutral-400">{icon}</span>
-            </div>
-            <div className="mt-3 text-xl font-bold tracking-tight tabular-nums">
-                {value}
+        <Card className="flex h-full flex-col justify-between gap-0 border border-sidebar-border/70 p-5 dark:border-sidebar-border">
+            <div>
+                <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
+                        {title}
+                    </span>
+                    <span className="text-neutral-400">{icon}</span>
+                </div>
+                <div className="mt-3 text-xl font-bold tracking-tight tabular-nums">
+                    {value}
+                </div>
             </div>
             <div className="mt-2 flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
                 {footer}
+            </div>
+        </Card>
+    );
+}
+
+function VolumeStatCard({
+    currencies,
+    fallbackValue,
+    fallbackCurrency,
+    fallbackChange,
+}: {
+    currencies?: CurrencyVolume[];
+    fallbackValue: number;
+    fallbackCurrency: string;
+    fallbackChange: number | null;
+}) {
+    if (!currencies || currencies.length <= 1) {
+        return (
+            <StatCard
+                title="Volume Processed"
+                value={formatMoney(fallbackValue, fallbackCurrency)}
+                icon={<TrendingUp className="h-4 w-4" />}
+                footer={
+                    <>
+                        <TrendPill change={fallbackChange} />
+                        <span>vs previous 30d</span>
+                    </>
+                }
+            />
+        );
+    }
+
+    return (
+        <Card className="flex h-full flex-col justify-between gap-0 border border-sidebar-border/70 p-5 dark:border-sidebar-border">
+            <div>
+                <div className="flex items-center justify-between">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
+                            Volume Processed
+                        </span>
+                        <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
+                            {currencies.length} currencies
+                        </span>
+                    </div>
+                    <span className="shrink-0 text-neutral-400">
+                        <TrendingUp className="h-4 w-4" />
+                    </span>
+                </div>
+
+                <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1">
+                    {currencies.slice(0, 4).map((c) => {
+                        const hasVolume = c.value > 0;
+                        const cleanAmount = formatMoney(
+                            c.value,
+                            c.currency,
+                        ).replace(
+                            new RegExp(`^${c.currency}[\\s\\u00A0]*`),
+                            '',
+                        );
+
+                        return (
+                            <div
+                                key={c.currency}
+                                className="flex min-w-0 items-center justify-between gap-1.5 py-0.5"
+                            >
+                                <span className="shrink-0 font-mono text-[10px] font-semibold text-neutral-400 dark:text-neutral-500">
+                                    {c.currency}
+                                </span>
+                                <span
+                                    className={cn(
+                                        'truncate text-xs tabular-nums',
+                                        hasVolume
+                                            ? 'font-bold text-neutral-900 dark:text-neutral-100'
+                                            : 'font-normal text-neutral-400 dark:text-neutral-500',
+                                    )}
+                                >
+                                    {cleanAmount}
+                                </span>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+            <div className="mt-2 flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                <TrendPill change={fallbackChange} />
+                <span>vs previous 30d</span>
             </div>
         </Card>
     );
@@ -316,6 +306,7 @@ export default function Dashboard({
     hasProviders,
     stats,
     volumeTrend,
+    trendCurrencies = [],
     statusBreakdown,
     providerPerformance,
     recentTransactions,
@@ -325,6 +316,10 @@ export default function Dashboard({
 }: DashboardProps) {
     const [loading, setLoading] = useState(false);
     const [showToken, setShowToken] = useState(false);
+    const [chartMetric, setChartMetric] = useState<'count' | 'volume'>('count');
+    const [selectedChartCurrency, setSelectedChartCurrency] = useState<
+        string | null
+    >(null);
     const [txSearch, setTxSearch] = useState(transactionFilters.q ?? '');
     const [provSearch, setProvSearch] = useState(providerFilters.q ?? '');
 
@@ -437,16 +432,11 @@ export default function Dashboard({
 
                 {/* KPI cards */}
                 <div className="grid auto-rows-min gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                    <StatCard
-                        title="Volume Processed"
-                        value={formatMoney(stats.volume.value, currency)}
-                        icon={<TrendingUp className="h-4 w-4" />}
-                        footer={
-                            <>
-                                <TrendPill change={stats.volume.change} />
-                                <span>vs previous 30d</span>
-                            </>
-                        }
+                    <VolumeStatCard
+                        currencies={stats.volume.currencies}
+                        fallbackValue={stats.volume.value}
+                        fallbackCurrency={currency}
+                        fallbackChange={stats.volume.change}
                     />
                     <StatCard
                         title="Transactions"
@@ -488,17 +478,135 @@ export default function Dashboard({
                 {/* Activity chart + status breakdown */}
                 <div className="grid gap-6 lg:grid-cols-3">
                     <Card className="gap-0 border border-sidebar-border/70 p-5 lg:col-span-2 dark:border-sidebar-border">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
-                                <h2 className="text-sm font-semibold">
-                                    Transaction Activity
-                                </h2>
+                                <div className="flex items-center gap-2">
+                                    <h2 className="text-sm font-semibold">
+                                        Transaction Activity
+                                    </h2>
+                                    {trendCurrencies.length > 0 && (
+                                        <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
+                                            {trendCurrencies.length}{' '}
+                                            {trendCurrencies.length === 1
+                                                ? 'currency'
+                                                : 'currencies'}
+                                        </span>
+                                    )}
+                                </div>
                                 <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                    Daily transaction count — last 14 days
+                                    {chartMetric === 'count'
+                                        ? 'Daily transaction count by transacted currency — last 14 days'
+                                        : 'Daily volume by transacted currency — last 14 days'}
                                 </p>
                             </div>
-                            <Activity className="h-4 w-4 text-neutral-400" />
+
+                            <div className="flex items-center gap-2 self-start sm:self-auto">
+                                <div className="inline-flex rounded-md bg-neutral-100 p-0.5 dark:bg-neutral-800">
+                                    <button
+                                        type="button"
+                                        onClick={() => setChartMetric('count')}
+                                        className={cn(
+                                            'rounded px-2.5 py-0.5 text-xs font-medium transition-colors',
+                                            chartMetric === 'count'
+                                                ? 'bg-white text-neutral-900 shadow-xs dark:bg-neutral-900 dark:text-neutral-100'
+                                                : 'text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100',
+                                        )}
+                                    >
+                                        Count
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setChartMetric('volume')}
+                                        className={cn(
+                                            'rounded px-2.5 py-0.5 text-xs font-medium transition-colors',
+                                            chartMetric === 'volume'
+                                                ? 'bg-white text-neutral-900 shadow-xs dark:bg-neutral-900 dark:text-neutral-100'
+                                                : 'text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100',
+                                        )}
+                                    >
+                                        Volume
+                                    </button>
+                                </div>
+                                <Activity className="h-4 w-4 text-neutral-400" />
+                            </div>
                         </div>
+
+                        {trendCurrencies.length > 0 && (
+                            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                                {trendCurrencies.length > 1 && (
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setSelectedChartCurrency(null)
+                                        }
+                                        className={cn(
+                                            'rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
+                                            selectedChartCurrency === null
+                                                ? 'bg-neutral-900 text-white shadow-xs dark:bg-neutral-100 dark:text-neutral-900'
+                                                : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700',
+                                        )}
+                                    >
+                                        All ({trendCurrencies.length})
+                                    </button>
+                                )}
+                                {trendCurrencies.map((c, idx) => {
+                                    const color = getCurrencyColor(
+                                        c.currency,
+                                        idx,
+                                    );
+                                    const isSelected =
+                                        selectedChartCurrency === c.currency;
+                                    const isDimmed =
+                                        selectedChartCurrency !== null &&
+                                        !isSelected;
+
+                                    return (
+                                        <button
+                                            key={c.currency}
+                                            type="button"
+                                            onClick={() =>
+                                                setSelectedChartCurrency(
+                                                    (prev) =>
+                                                        prev === c.currency
+                                                            ? null
+                                                            : c.currency,
+                                                )
+                                            }
+                                            className={cn(
+                                                'flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all',
+                                                isSelected
+                                                    ? 'bg-neutral-900 text-white shadow-xs dark:bg-neutral-100 dark:text-neutral-900'
+                                                    : isDimmed
+                                                      ? 'bg-neutral-100 text-neutral-600 opacity-40 hover:opacity-80 dark:bg-neutral-800 dark:text-neutral-400'
+                                                      : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700',
+                                            )}
+                                        >
+                                            <span
+                                                className="h-2 w-2 shrink-0 rounded-full"
+                                                style={{
+                                                    backgroundColor:
+                                                        color.stroke,
+                                                }}
+                                            />
+                                            <span className="font-semibold">
+                                                {c.currency}
+                                            </span>
+                                            <span className="text-[11px] tabular-nums opacity-80">
+                                                ({c.count}{' '}
+                                                {c.count === 1 ? 'txn' : 'txns'}{' '}
+                                                &middot;{' '}
+                                                {formatMoney(
+                                                    c.volume,
+                                                    c.currency,
+                                                )}
+                                                )
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+
                         {!hasTrend ? (
                             <div className="flex h-44 flex-col items-center justify-center text-center text-sm text-neutral-400">
                                 <Activity className="mb-2 h-6 w-6" />
@@ -508,8 +616,11 @@ export default function Dashboard({
                             <div className="mt-4">
                                 <ActivityAreaChart
                                     points={volumeTrend}
-                                    formatVolume={(v) =>
-                                        formatMoney(v, currency)
+                                    currencies={trendCurrencies}
+                                    metric={chartMetric}
+                                    selectedCurrency={selectedChartCurrency}
+                                    formatVolume={(v, curr) =>
+                                        formatMoney(v, curr ?? currency)
                                     }
                                 />
                             </div>
@@ -539,6 +650,7 @@ export default function Dashboard({
                                             totalStatus > 0
                                                 ? (count / totalStatus) * 100
                                                 : 0;
+
                                         return (
                                             <div key={status}>
                                                 <div className="mb-1 flex items-center justify-between text-sm">
@@ -831,6 +943,7 @@ export default function Dashboard({
                                                 STATUS_STYLES.draft;
                                             const isCredit =
                                                 tx.direction === 'credit';
+
                                             return (
                                                 <tr
                                                     key={tx.id}

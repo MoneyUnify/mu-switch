@@ -27,3 +27,12 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+
+# Personal internal reference (not for the repo)
+INTERNAL_PROJECT_REFERENCE.md
+/INTERNAL_PROJECT_REFERENCE.md
+/PAYPAL_HACKATHON_RESEARCH.md
+/HACKATHON_PLAYBOOK.md
+/DEVPOST_ABOUT.md
+/.env.docker
+/public/postman

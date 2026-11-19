@@ -46,7 +46,7 @@ class ProviderCallLogger
      *
      * @var list<string>
      */
-    private const REDACTED_FIELDS = ['client_secret', 'client_id', 'api_key', 'apikey', 'secret', 'password', 'token', 'access_token', 'subscription_key'];
+    private const REDACTED_FIELDS = ['client_secret', 'client_id', 'api_key', 'apikey', 'secret', 'password', 'token', 'access_token', 'refresh_token', 'id_token', 'subscription_key'];
 
     /**
      * Maximum number of characters of a body to persist.
@@ -88,7 +88,7 @@ class ProviderCallLogger
 
         $this->complete($event->request, [
             'response_status' => $event->response->status(),
-            'response_body' => $this->truncate($event->response->body()),
+            'response_body' => $this->responseBody($event->response->body()),
             'duration_ms' => $durationMs,
             'failed' => $event->response->failed(),
         ]);
@@ -228,6 +228,21 @@ class ProviderCallLogger
     }
 
     /**
+     * A redacted, truncated response body, so issued credentials (e.g. OAuth
+     * access tokens) are never persisted.
+     */
+    private function responseBody(string $body): string
+    {
+        $decoded = json_decode($body, true);
+
+        if (is_array($decoded)) {
+            return $this->truncate((string) json_encode($this->redactBody($decoded)));
+        }
+
+        return $this->truncate($body);
+    }
+
+    /**
      * Redact sensitive header values.
      *
      * @param  array<string, array<int, string>>  $headers
@@ -245,7 +260,7 @@ class ProviderCallLogger
     }
 
     /**
-     * Redact sensitive request body fields (recursively).
+     * Redact sensitive body fields (recursively).
      *
      * @param  array<string, mixed>  $body
      * @return array<string, mixed>

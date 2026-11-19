@@ -1,11 +1,11 @@
 <?php
 
+use App\Enums\TransactionStatus;
+use App\Models\Customer;
+use App\Models\PaymentProvider;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use App\Models\PaymentProvider;
-use App\Enums\TransactionStatus;
-use App\Models\Customer;
 
 return new class extends Migration
 {
@@ -16,11 +16,16 @@ return new class extends Migration
     {
         Schema::create('transactions', function (Blueprint $table) {
             $table->id();
-            $table->uuid('transaction_id')->unique();
-            $table->foreignIdFor(PaymentProvider::class)->constrained()->onDelete('cascade');
+            // A string, not a uuid column: several drivers use their own reference
+            // format (e.g. MU-20260701-ABC123), which Postgres rejects as a uuid.
+            $table->string('transaction_id', 100)->unique();
+            // The foreign keys to payment_providers and customers are added once
+            // those tables exist (in the payment_providers migration): Postgres
+            // and MySQL can't reference a table that hasn't been created yet.
+            $table->foreignIdFor(PaymentProvider::class);
             $table->string('provider_transaction_id', 255);
             $table->unique(['payment_provider_id', 'provider_transaction_id']);
-            $table->foreignIdFor(Customer::class)->constrained()->onDelete('cascade');
+            $table->foreignIdFor(Customer::class);
             $table->decimal('amount', 15, 2);
             $table->string('currency', 3);
             $table->enum('status', array_column(TransactionStatus::cases(), 'value'))->default(TransactionStatus::DRAFT->value);

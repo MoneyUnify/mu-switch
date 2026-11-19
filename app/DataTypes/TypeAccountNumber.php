@@ -12,8 +12,7 @@ class TypeAccountNumber
         public string $number,
         public string $name,
         public string $country
-    )
-    {
+    ) {
         //
     }
 }

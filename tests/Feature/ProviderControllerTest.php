@@ -2,6 +2,7 @@
 
 use App\Enums\TransactionStatus;
 use App\Http\Controllers\Providers\LencoController;
+use App\Http\Controllers\Providers\PaypalController;
 use App\Models\Customer;
 use App\Models\PaymentProvider;
 use App\Models\Transaction;
@@ -46,6 +47,51 @@ test('user can view their own providers', function () {
                 && collect($drivers)->firstWhere('name', 'Airtel Money')['config_fields'][0]['key'] === 'client_id'
                 && collect($drivers)->firstWhere('name', 'Lenco')['default_logo'] !== null)
         );
+});
+
+test('drivers expose the currencies they can charge for filtering', function () {
+    $this->actingAs(User::factory()->create())
+        ->get(route('providers.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('availableDrivers', function ($drivers) {
+                $drivers = collect($drivers);
+
+                // Market-bound drivers charge their markets' currencies.
+                return $drivers->firstWhere('name', 'Lenco')['supported_currencies'] === ['MWK', 'ZMW']
+                    // PayPal declares its own list.
+                    && in_array('USD', $drivers->firstWhere('name', 'PayPal')['supported_currencies'], true);
+            }));
+});
+
+test('providers without a saved logo show their driver\'s default logo', function () {
+    $user = User::factory()->create();
+    $paypal = PaymentProvider::create([
+        'user_id' => $user->id,
+        'name' => 'PayPal',
+        'class' => PaypalController::class,
+        'config' => ['supported_countries' => ['ZM']],
+        'is_active' => true,
+    ]);
+    $custom = PaymentProvider::create([
+        'user_id' => $user->id,
+        'name' => 'Lenco',
+        'class' => LencoController::class,
+        'config' => ['supported_countries' => ['ZM']],
+        'logo_url' => '/custom-lenco.png',
+        'is_active' => true,
+    ]);
+
+    expect($paypal->logo_url)->toBe('/paypal.png')
+        ->and(file_exists(public_path('paypal.png')))->toBeTrue()
+        ->and($custom->logo_url)->toBe('/custom-lenco.png')
+        // Drivers without a default and no saved logo stay empty.
+        ->and(PaymentProvider::make(['class' => 'App\\Missing\\Driver'])->logo_url)->toBeNull();
+
+    $this->actingAs($user)
+        ->get(route('providers.index'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('providers', fn ($providers) => collect($providers)->firstWhere('name', 'PayPal')['logo_url'] === '/paypal.png')
+            ->where('availableDrivers', fn ($drivers) => collect($drivers)->firstWhere('name', 'PayPal')['default_logo'] === '/paypal.png'));
 });
 
 test('user can create a payment provider', function () {
@@ -202,6 +248,39 @@ test('a market needing extra integration details is rejected without them', func
         ->assertSessionHasErrors('market_extra_values.NA.product_id');
 
     $this->assertDatabaseMissing('payment_providers', ['name' => 'Kazang Incomplete']);
+});
+
+test('optional credential fields may be left blank', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->post(route('providers.store'), [
+            'name' => 'PayPal',
+            'class' => PaypalController::class,
+            'config' => ['client_id' => 'id', 'client_secret' => 'secret', 'environment' => 'sandbox'],
+            'supported_countries' => ['ZM'],
+            'is_active' => 1,
+        ])
+        ->assertRedirect(route('providers.index'));
+
+    $config = PaymentProvider::where('name', 'PayPal')->sole()->config;
+
+    expect($config)->toMatchArray(['client_id' => 'id', 'environment' => 'sandbox'])
+        ->and($config['webhook_id'] ?? null)->toBeNull();
+});
+
+test('a select credential field only accepts its listed options', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)
+        ->post(route('providers.store'), [
+            'name' => 'PayPal',
+            'class' => PaypalController::class,
+            'config' => ['client_id' => 'id', 'client_secret' => 'secret', 'environment' => 'production'],
+            'supported_countries' => ['ZM'],
+            'is_active' => 1,
+        ])
+        ->assertSessionHasErrors('config.environment');
 });
 
 test('user can update their own payment provider', function () {

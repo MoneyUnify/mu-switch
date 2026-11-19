@@ -1,6 +1,6 @@
 # MoneyUnify Switch — Full Overview
 
-> MoneyUnify Switch is a source-available, self-hosted payment switch API that unifies mobile money and card providers across Africa behind one endpoint, with automatic sequential provider failover across 32 countries and 24 currencies.
+> MoneyUnify Switch is an open-source, self-hosted payment switch API that unifies mobile money and card providers across Africa behind one endpoint, with automatic sequential provider failover across 32 countries and 24 currencies.
 
 This document is a self-contained overview intended for large language models, AI
 assistants, and chatbots. It describes what MoneyUnify Switch is, who it is for,
@@ -17,7 +17,7 @@ customer. The switch decides which provider to use behind the scenes and, if one
 provider is down or declines, automatically tries the next until the payment goes
 through. One connection, all providers.
 
-It is **source-available** and **self-hosted**: it runs on the operator's own VPS
+It is **open source (Apache-2.0)** and **self-hosted**: it runs on the operator's own VPS
 or machine. There is no central hosted sign-up — each operator deploys their own
 instance and registers the first account on it. The reference deployment and
 documentation live at https://moneyunify.one and the source at
@@ -41,7 +41,7 @@ for configuration and a single JSON API for collection.
 - **Multi-country and multi-currency by design.** Providers advertise the markets they serve; the switch routes each request to a provider that can settle it in the right country and currency. Coverage spans 32 countries and 24 currencies.
 - **First-class FX tracking.** Every transaction records whether it crossed currencies and the rate applied.
 - **Full auditability.** Every attempt is persisted and visible in one dashboard, with per-provider logs, for easy reconciliation.
-- **Extensible drivers.** Ships with 13 built-in provider drivers and a documented way to add your own.
+- **Extensible drivers.** Ships with 14 built-in provider drivers and a documented way to add your own.
 
 ## The single API endpoint
 
@@ -118,7 +118,7 @@ the right inputs per driver. Operators can also add custom drivers.
 
 - 32 countries supported across the built-in drivers.
 - 24 currencies.
-- 13 built-in providers, covering major mobile networks (e.g. MTN, Airtel Money, M-Pesa, TNM Mpamba, Zamtel) and card rails via aggregators.
+- 14 built-in providers, covering major mobile networks (e.g. MTN, Airtel Money, M-Pesa, TNM Mpamba, Zamtel), card rails via aggregators, and PayPal hosted checkout.
 
 See the live coverage matrix (country, code, currency, networks, providers) at
 https://moneyunify.one/docs/api/coverage.
@@ -143,7 +143,14 @@ collecting via `POST /api/v1/payment/request`.
 - Installation: https://moneyunify.one/docs/installation
 - API — How the switch works: https://moneyunify.one/docs/api/overview
 - API — Request a payment: https://moneyunify.one/docs/api/request-payment
+- API — Quote a payment: https://moneyunify.one/docs/api/quote-payment
 - API — Verify a payment: https://moneyunify.one/docs/api/verify-payment
+- API — Send a payout: https://moneyunify.one/docs/api/payouts
+- API — Exchange rates & FX quotes: https://moneyunify.one/docs/api/fx
+- API — Cross-border transfers (PayPal to mobile money): https://moneyunify.one/docs/api/cross-border-transfers
+- API — Merchant API (aggregators: PayPal in, mobile-money settlement out): https://moneyunify.one/docs/api/merchants
+- API — Refund a payment: https://moneyunify.one/docs/api/refunds
+- Merchants (for aggregators): https://moneyunify.one/docs/merchants
 - API — Responses & errors: https://moneyunify.one/docs/api/responses
 - Coverage: https://moneyunify.one/docs/api/coverage
 - Providers: https://moneyunify.one/docs/providers

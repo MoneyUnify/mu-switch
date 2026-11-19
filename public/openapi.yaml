@@ -1,0 +1,1321 @@
+openapi: 3.1.0
+info:
+  title: MoneyUnify API
+  version: 1.0.0
+  summary: One API for PayPal and African mobile money.
+  description: |
+    MoneyUnify is an open-source payment engine. A business integrates it once
+    and routes across every provider it has contracts with: collect payments
+    (mobile money, cards and PayPal), pay out to mobile-money wallets, refund,
+    send PayPal-funded transfers to mobile money at a locked exchange rate, and
+    run a gateway that collects and settles for merchants.
+
+    **Authentication.** Send your account's API token as a Bearer token on
+    every request. Find it on the dashboard.
+
+    **Responses.** Every response is a JSON envelope with `status`, `message`
+    and `data`. On success the envelope `status` is `success`, or the
+    resource's own state (for example `pending`, `delivered`, `refunded`) for
+    endpoints that report one. Errors use `status: error` with a 4xx or 5xx
+    code. Validation errors (422) use Laravel's format, with `message` and
+    `errors`.
+
+    **Idempotency.** Endpoints that move money accept an `Idempotency-Key`
+    header (1 to 255 characters). Retrying with the same key returns the first
+    result, marked `replayed`, instead of acting twice.
+  contact:
+    name: MoneyUnify
+    url: https://github.com/blessedjasonmwanza/mu-switch-paypal
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: https://{host}/api/v1
+    description: Your MoneyUnify deployment
+    variables:
+      host:
+        default: your-domain.com
+  - url: http://localhost:8000/api/v1
+    description: Local development
+security:
+  - bearerAuth: []
+tags:
+  - name: Payments
+    description: Collect a payment through the first eligible provider, with automatic fallback.
+  - name: Refunds
+    description: Refund a captured PayPal payment, in full or in part.
+  - name: Payouts
+    description: Pay out from your float to a mobile-money account.
+  - name: Transfers
+    description: Cross-border transfers, paid in with PayPal and delivered to mobile money at a locked rate.
+  - name: Merchants
+    description: Collect and settle for merchants, with commission.
+  - name: Pay links
+    description: A merchant's saved pay links.
+  - name: FX
+    description: Exchange rates and locked FX quotes (PayPal's own rates where PayPal FX is enabled).
+
+paths:
+  /payment/quote:
+    post:
+      tags: [Payments]
+      operationId: quotePayment
+      summary: Quote a payment
+      description: What collecting this amount would cost with each provider that can take it, both when the merchant absorbs the fees and when the payer covers them. Creates nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, country]
+              properties:
+                amount: { $ref: '#/components/schemas/AmountInput' }
+                country: { $ref: '#/components/schemas/Country' }
+                currency: { $ref: '#/components/schemas/CurrencyInput' }
+                allow_fx:
+                  type: boolean
+                  description: Allow providers that charge in another currency (e.g. PayPal for an African currency).
+                fx_quote_id:
+                  type: string
+                  description: Use this locked FX quote (implies allow_fx).
+      responses:
+        '200':
+          description: Quotes, cheapest route first under a cost-aware fee policy.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          amount: { type: string, examples: ['50.00'] }
+                          currency: { type: string, examples: [ZMW] }
+                          country: { type: string, examples: [ZM] }
+                          quoted_at: { type: string, format: date-time }
+                          quotes:
+                            type: array
+                            items: { $ref: '#/components/schemas/ProviderQuote' }
+        '400': { $ref: '#/components/responses/NoProvider' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /payment/request:
+    post:
+      tags: [Payments]
+      operationId: requestPayment
+      summary: Collect a payment
+      description: |
+        Collect from a customer through the first eligible provider, falling back
+        to the next only when a provider definitely refuses. Mobile money sends a
+        prompt to the payer's phone; PayPal returns `checkout_url` for the payer
+        to approve. The transaction starts `pending`: verify it for the outcome.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, account_number, country]
+              properties:
+                amount: { $ref: '#/components/schemas/AmountInput' }
+                account_number:
+                  type: string
+                  description: The payer. A mobile number for mobile money, or an email for PayPal.
+                  examples: ['0976000000']
+                country: { $ref: '#/components/schemas/Country' }
+                currency: { $ref: '#/components/schemas/CurrencyInput' }
+                email:
+                  type: string
+                  format: email
+                  description: The payer's email, for providers that accept one (PayPal pre-fills its login).
+                pay_with: { $ref: '#/components/schemas/PayWith' }
+                return_url:
+                  type: string
+                  format: uri
+                  description: For hosted checkouts (PayPal), where the payer is sent afterwards.
+                callback_url:
+                  type: string
+                  format: uri
+                  description: Where the final result is POSTed once the transaction settles.
+                allow_fx:
+                  type: boolean
+                  description: Allow providers that charge in another currency.
+                fx_quote_id:
+                  type: string
+                  description: Use this locked FX quote (implies allow_fx).
+      responses:
+        '200':
+          description: The payment was started.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PaymentStarted' }
+        '400': { $ref: '#/components/responses/NoProvider' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '502': { $ref: '#/components/responses/ProviderError' }
+
+  /payment/verify:
+    post:
+      tags: [Payments]
+      operationId: verifyPayment
+      summary: Check a payment
+      description: Re-check a payment with the provider that took it and return its current state. Once it settles, its callback_url is notified.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transaction_id]
+              properties:
+                transaction_id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The payment's state. The envelope status is the transaction's (pending, success or failed).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PaymentStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /payment/refund:
+    post:
+      tags: [Refunds]
+      operationId: refundPayment
+      summary: Refund a payment
+      description: Refund a captured PayPal payment in full, or in part with `amount`. A payment that funds a cross-border transfer is refunded automatically if delivery fails, so it can't be refunded here.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transaction_id]
+              properties:
+                transaction_id:
+                  type: string
+                  format: uuid
+                  description: The payment's transaction_id.
+                amount:
+                  type: number
+                  exclusiveMinimum: 0
+                  description: Part of the payment to refund. Omit to refund what's left.
+                reason:
+                  type: string
+                  maxLength: 255
+                  description: Shown to the payer.
+      responses:
+        '200': { $ref: '#/components/responses/RefundResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/RefundRefused' }
+
+  /payment/refund/verify:
+    post:
+      tags: [Refunds]
+      operationId: verifyRefund
+      summary: Check a refund
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refund_id]
+              properties:
+                refund_id: { type: string, format: uuid }
+      responses:
+        '200': { $ref: '#/components/responses/RefundResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/RefundRefused' }
+
+  /payout/request:
+    post:
+      tags: [Payouts]
+      operationId: requestPayout
+      summary: Send a payout
+      description: Pay out from your float to a mobile-money account. Falls back to the next payout provider only after a definite refusal, so a payout is never sent twice.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, account_number, country]
+              properties:
+                amount: { $ref: '#/components/schemas/AmountInput' }
+                account_number:
+                  type: string
+                  maxLength: 50
+                  description: The recipient's mobile number.
+                  examples: ['0977123456']
+                country: { $ref: '#/components/schemas/Country' }
+                currency: { $ref: '#/components/schemas/CurrencyInput' }
+                network:
+                  type: string
+                  maxLength: 50
+                  description: The recipient's network, when the provider can't detect it.
+                narration:
+                  type: string
+                  maxLength: 100
+                  description: Shown to the recipient where the provider supports it.
+                callback_url:
+                  type: string
+                  format: uri
+      responses:
+        '200':
+          description: The payout was accepted (or replayed for this Idempotency-Key).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PayoutStarted' }
+        '202':
+          description: No definite answer from the provider; verify the payout before retrying.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Envelope' }
+        '400': { $ref: '#/components/responses/NoProvider' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/InProgress' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /payout/verify:
+    post:
+      tags: [Payouts]
+      operationId: verifyPayout
+      summary: Check a payout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transaction_id]
+              properties:
+                transaction_id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The payout's state. The envelope status is the payout's (pending, success or failed).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PaymentStatus' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /transfer/quote:
+    post:
+      tags: [Transfers]
+      operationId: quoteTransfer
+      summary: Quote a transfer
+      description: What the sender pays with PayPal, what the recipient receives on mobile money, the locked exchange rate (and whether it's PayPal's), estimated fees and the route. Creates nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransferQuoteInput' }
+      responses:
+        '200':
+          description: The quote, locked for 10 minutes.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TransferQuote' }
+        '400': { $ref: '#/components/responses/NoProvider' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /transfer/request:
+    post:
+      tags: [Transfers]
+      operationId: requestTransfer
+      summary: Start a transfer
+      description: Start a transfer. The sender pays with PayPal at `checkout_url`, then the recipient is paid on mobile money at the locked rate, or the sender is refunded if delivery fails.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/TransferQuoteInput'
+                - type: object
+                  required: [account_number]
+                  properties:
+                    account_number:
+                      type: string
+                      maxLength: 50
+                      description: The recipient's mobile number.
+                      examples: ['0977123456']
+                    recipient_name: { type: string, maxLength: 255 }
+                    recipient_email: { type: string, format: email, description: "Emailed when the money arrives." }
+                    network: { type: string, maxLength: 50 }
+                    narration: { type: string, maxLength: 100, description: Shown to the recipient where supported. }
+                    payer_email:
+                      type: string
+                      format: email
+                      description: The sender's email. Pre-fills PayPal, and receives the delivered or refunded email.
+                    pay_with: { $ref: '#/components/schemas/PayWith' }
+                    return_url: { type: string, format: uri, description: Where PayPal sends the sender afterwards. }
+      responses:
+        '200':
+          description: The transfer, awaiting the sender's PayPal payment (or replayed for this Idempotency-Key). The envelope status is the transfer's.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Transfer' }
+        '400': { $ref: '#/components/responses/NoProvider' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/InProgress' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /transfer/verify:
+    post:
+      tags: [Transfers]
+      operationId: verifyTransfer
+      summary: Check a transfer
+      description: Move the transfer on where it can (capture, pay out, refund) and return its state and timeline.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reference]
+              properties:
+                reference: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The transfer. The envelope status is the transfer's.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Transfer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /merchants:
+    get:
+      tags: [Merchants]
+      operationId: listMerchants
+      summary: List merchants
+      parameters:
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: The account's merchants, newest first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          merchants:
+                            type: array
+                            items: { $ref: '#/components/schemas/Merchant' }
+                          total: { type: integer }
+                          page: { type: integer }
+                          last_page: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Merchants]
+      operationId: createMerchant
+      summary: Onboard a merchant
+      description: Add a merchant, settled to its own mobile-money wallet. Its country must be one a payout provider can settle to.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/MerchantInput'
+                - type: object
+                  required: [name, country, wallet_number]
+      responses:
+        '201':
+          description: The merchant.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Merchant' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /merchants/{merchant}:
+    parameters:
+      - $ref: '#/components/parameters/Merchant'
+    get:
+      tags: [Merchants]
+      operationId: getMerchant
+      summary: Get a merchant
+      responses:
+        '200':
+          description: The merchant, with settlement stats.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Merchant' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Merchants]
+      operationId: updateMerchant
+      summary: Update a merchant
+      description: Change any of its details or commission, or pause it with `is_active` false.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MerchantInput' }
+      responses:
+        '200':
+          description: The updated merchant.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Merchant' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /merchants/{merchant}/quote:
+    parameters:
+      - $ref: '#/components/parameters/Merchant'
+    post:
+      tags: [Merchants]
+      operationId: quoteMerchantPayment
+      summary: Quote a merchant payment
+      description: What a customer would pay with PayPal, the commission, and what the merchant receives. Creates nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MerchantPaymentInput' }
+      responses:
+        '200':
+          description: The quote.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MerchantQuote' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /merchants/{merchant}/charge:
+    parameters:
+      - $ref: '#/components/parameters/Merchant'
+    post:
+      tags: [Merchants]
+      operationId: chargeMerchantCustomer
+      summary: Charge a customer for a merchant
+      description: The customer pays with PayPal at `checkout_url`; the merchant is settled to its wallet less commission once PayPal confirms.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/MerchantPaymentInput'
+                - type: object
+                  properties:
+                    payer_email: { type: string, format: email, description: The customer's email. Pre-fills PayPal and receives the payment emails. }
+                    pay_with: { $ref: '#/components/schemas/PayWith' }
+                    reference: { type: string, maxLength: 100, description: Your order or invoice reference. }
+                    return_url: { type: string, format: uri, description: Where PayPal sends the customer. Defaults to MoneyUnify's live receipt page. }
+      responses:
+        '200':
+          description: The payment, awaiting the customer's PayPal approval (or replayed for this Idempotency-Key). The envelope status is the payment's.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Settlement' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/InProgress' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /merchants/{merchant}/settlements:
+    parameters:
+      - $ref: '#/components/parameters/Merchant'
+    get:
+      tags: [Merchants]
+      operationId: listMerchantSettlements
+      summary: List a merchant's settlements
+      parameters:
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: The merchant's payments and how each was settled, newest first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          settlements:
+                            type: array
+                            items: { $ref: '#/components/schemas/Settlement' }
+                          total: { type: integer }
+                          page: { type: integer }
+                          last_page: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /merchants/{merchant}/links:
+    parameters:
+      - $ref: '#/components/parameters/Merchant'
+    get:
+      tags: [Pay links]
+      operationId: listPayLinks
+      summary: List pay links
+      responses:
+        '200':
+          description: The merchant's saved pay links, newest first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          links:
+                            type: array
+                            items: { $ref: '#/components/schemas/PayLink' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Pay links]
+      operationId: createPayLink
+      summary: Create a pay link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PayLinkInput' }
+      responses:
+        '201':
+          description: The pay link.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PayLink' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /merchants/{merchant}/links/{link}:
+    parameters:
+      - $ref: '#/components/parameters/Merchant'
+      - name: link
+        in: path
+        required: true
+        description: The pay link's id or code.
+        schema: { type: string }
+    patch:
+      tags: [Pay links]
+      operationId: updatePayLink
+      summary: Update a pay link
+      description: Change it, or turn it off with `is_active` false.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PayLinkInput' }
+      responses:
+        '200':
+          description: The updated pay link.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PayLink' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Pay links]
+      operationId: deletePayLink
+      summary: Delete a pay link
+      description: Deletes a link that never took a payment. One that did is archived instead, so its payments keep their history.
+      responses:
+        '200':
+          description: What happened to the link.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          outcome: { type: string, enum: [deleted, archived] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /fx/rates:
+    get:
+      tags: [FX]
+      operationId: getExchangeRates
+      summary: Exchange rates
+      description: Rates from a base currency to every supported currency. `rate_source` is `paypal` where PayPal FX supplied the rate.
+      parameters:
+        - name: base
+          in: query
+          description: The base currency. Defaults to USD.
+          schema: { type: string, minLength: 3, maxLength: 3, examples: [USD] }
+      responses:
+        '200':
+          description: The rates.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          base_currency: { type: string, examples: [USD] }
+                          rate_source: { $ref: '#/components/schemas/RateSource' }
+                          paypal_fx:
+                            type: object
+                            properties:
+                              state: { type: string, enum: [enabled, not_enabled, unavailable, unknown, 'off', no_paypal] }
+                              activation_url: { type: [string, 'null'], format: uri }
+                          rates:
+                            type: object
+                            description: Keyed by currency code.
+                            additionalProperties: { $ref: '#/components/schemas/FxRate' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /fx/quote:
+    post:
+      tags: [FX]
+      operationId: createFxQuote
+      summary: Lock an FX quote
+      description: Convert an amount and lock the rate for 10 minutes. Pass its `id` as `fx_quote_id` to use it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from_currency, to_currency, amount]
+              properties:
+                from_currency: { type: string, minLength: 3, maxLength: 3, examples: [USD] }
+                to_currency: { type: string, minLength: 3, maxLength: 3, examples: [ZMW] }
+                amount: { type: number, exclusiveMinimum: 0 }
+                mode:
+                  type: string
+                  enum: [source, target]
+                  default: source
+                  description: source (default) means `amount` is in from_currency; target means `amount` must arrive in to_currency.
+      responses:
+        '200':
+          description: The locked quote.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/FxQuote' }
+        '400':
+          description: The currency pair isn't supported.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /fx/quote/{id}:
+    get:
+      tags: [FX]
+      operationId: getFxQuote
+      summary: Get an FX quote
+      description: One of the account's quotes, to check its status or remaining time.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The quote.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/FxQuote' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+webhooks:
+  paypal:
+    post:
+      operationId: paypalWebhook
+      summary: PayPal webhook (from PayPal)
+      description: |
+        Register `https://your-domain.com/api/webhooks/paypal/{provider_id}` in your
+        PayPal app and paste the webhook's ID into the provider. Subscribe to
+        CHECKOUT.ORDER.APPROVED, PAYMENT.CAPTURE.COMPLETED and PAYMENT.CAPTURE.DENIED.
+        Each delivery's signature is checked with PayPal, and duplicates are ignored.
+        This is called by PayPal, not by your integration.
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, description: PayPal's webhook event. }
+      responses:
+        '200': { description: Accepted. }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Your account's API token, from the dashboard.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Any unique string, 1 to 255 characters. Retrying with the same key returns the first result instead of acting twice.
+      schema: { type: string, minLength: 1, maxLength: 255 }
+    Merchant:
+      name: merchant
+      in: path
+      required: true
+      description: The merchant's id or slug.
+      schema: { type: string }
+    PerPage:
+      name: per_page
+      in: query
+      description: 1 to 100. Default 25.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+
+  responses:
+    Unauthorized:
+      description: The API token is missing or invalid.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Not found, or it belongs to another account.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NoProvider:
+      description: No active provider can take this (country, currency or capability).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InProgress:
+      description: A request with this Idempotency-Key is already being processed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ProviderError:
+      description: Every eligible provider failed to take the request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: A field failed validation.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ValidationError' }
+    RefundResult:
+      description: The refund. The envelope status is the refund's (pending, success).
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Envelope'
+              - type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Refund' }
+    RefundRefused:
+      description: The refund was refused, failed, or failed validation.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: '#/components/schemas/Error'
+              - $ref: '#/components/schemas/ValidationError'
+
+  schemas:
+    Envelope:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: string
+          description: success, or the resource's own state (e.g. pending, delivered, refunded).
+        message: { type: string }
+        data: {}
+    Error:
+      type: object
+      required: [status, message]
+      properties:
+        status: { type: string, const: error }
+        message: { type: string }
+        data: {}
+    ValidationError:
+      type: object
+      required: [message, errors]
+      properties:
+        message: { type: string }
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+
+    Country:
+      type: string
+      description: ISO 3166 alpha-2 code of a market the switch supports.
+      enum: [ZM, MW, UG, GH, RW, CM, CI, BJ, GN, GW, LR, CG, CD, GA, TD, NE, NG, KE, TZ, MZ, LS, MG, SC, ZA, NA, BW, SZ, SS, SN, BF, SL, ET]
+    CurrencyInput:
+      type: string
+      minLength: 3
+      maxLength: 3
+      description: ISO 4217 code. Defaults to the country's own currency.
+      examples: [USD]
+    AmountInput:
+      type: number
+      exclusiveMinimum: 0
+      examples: [2500]
+    PayWith:
+      type: string
+      enum: [paypal, card]
+      default: paypal
+      description: card opens PayPal on its guest debit or credit card form, for payers without a PayPal account.
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount: { type: string, description: A decimal string in the currency's precision., examples: ['2500.00'] }
+        currency: { type: string, examples: [ZMW] }
+    TransactionStatus:
+      type: string
+      enum: [pending, success, failed]
+    TransferStatus:
+      type: string
+      enum: [awaiting_payment, funded, paying_out, delivered, payment_failed, payout_failed, refunding, refunded, refund_failed]
+    RateSource:
+      type: string
+      enum: [paypal, moneyunify]
+      description: paypal when the rate is PayPal's own (FX as a Service), moneyunify otherwise.
+
+    PaymentStarted:
+      type: object
+      properties:
+        transaction_id: { type: string, format: uuid, description: The switch's id for the payment. Use it to verify. }
+        reference: { type: string, description: The provider's reference. }
+        status: { $ref: '#/components/schemas/TransactionStatus' }
+        checkout_url: { type: string, format: uri, description: Hosted checkouts (PayPal) only. Send the payer here to approve. }
+        amount: { type: number }
+        currency: { type: string }
+        is_fx: { type: boolean }
+        fx_rate: { type: [number, 'null'] }
+      additionalProperties: true
+    PaymentStatus:
+      type: object
+      properties:
+        transaction_id: { type: string, format: uuid }
+        reference: { type: string }
+        status: { $ref: '#/components/schemas/TransactionStatus' }
+        provider_status: { type: [string, 'null'], description: The provider's own status. }
+        failure_reason: { type: [string, 'null'] }
+        amount: { type: number }
+        currency: { type: string }
+      additionalProperties: true
+    PayoutStarted:
+      type: object
+      properties:
+        transaction_id: { type: string, format: uuid }
+        reference: { type: string }
+        status: { $ref: '#/components/schemas/TransactionStatus' }
+        replayed: { type: boolean, description: True when returned for a repeated Idempotency-Key. }
+      additionalProperties: true
+    ProviderQuote:
+      type: object
+      properties:
+        provider: { type: string }
+        provider_id: { type: integer }
+        currency: { type: string }
+        fees_known: { type: boolean }
+        estimated: { type: boolean, const: true }
+        is_fx: { type: boolean }
+        fx: { type: [object, 'null'] }
+        merchant_pays_fees: { oneOf: [{ $ref: '#/components/schemas/FeeBreakdown' }, { type: 'null' }] }
+        payer_pays_fees: { oneOf: [{ $ref: '#/components/schemas/FeeBreakdown' }, { type: 'null' }] }
+    FeeBreakdown:
+      type: object
+      properties:
+        payer_pays: { type: string }
+        fees:
+          type: object
+          properties:
+            collection: { type: string }
+            settlement: { type: string }
+            total: { type: string }
+        merchant_receives: { type: string }
+    Refund:
+      type: object
+      properties:
+        refund_id: { type: string, format: uuid }
+        reference: { type: string, description: PayPal's refund id. }
+        transaction_id: { type: string, format: uuid, description: The refunded payment. }
+        status: { $ref: '#/components/schemas/TransactionStatus' }
+        amount: { type: string }
+        currency: { type: string }
+        reason: { type: [string, 'null'] }
+        failure: { type: [string, 'null'] }
+        payment:
+          type: object
+          properties:
+            amount: { type: string }
+            refunded: { type: string }
+            refundable: { type: string }
+
+    TransferQuoteInput:
+      type: object
+      required: [amount, country]
+      properties:
+        amount: { $ref: '#/components/schemas/AmountInput' }
+        country: { $ref: '#/components/schemas/Country' }
+        mode:
+          type: string
+          enum: [source, target]
+          default: target
+          description: target (default) means the recipient gets exactly `amount`; source means the sender pays exactly `amount`.
+        source_currency: { type: string, minLength: 3, maxLength: 3, description: What the sender pays in with PayPal. Defaults to USD. }
+        currency: { type: string, minLength: 3, maxLength: 3, description: What the recipient gets. Defaults to the country's currency. }
+        fx_quote_id: { type: string, maxLength: 64, description: Use this locked FX quote. }
+    TransferQuote:
+      type: object
+      properties:
+        fx_quote_id: { type: string, format: uuid }
+        sender_pays: { $ref: '#/components/schemas/Money' }
+        recipient_gets: { $ref: '#/components/schemas/Money' }
+        fx:
+          type: object
+          properties:
+            base_rate: { type: string }
+            effective_rate: { type: string }
+            margin_percent: { type: string }
+            margin_amount: { type: string }
+            rate_source: { $ref: '#/components/schemas/RateSource' }
+        operator_fees:
+          type: object
+          description: Estimated provider fees, paid by the operator, not added for the sender.
+          properties:
+            paypal: { oneOf: [{ $ref: '#/components/schemas/Money' }, { type: 'null' }] }
+            payout: { oneOf: [{ $ref: '#/components/schemas/Money' }, { type: 'null' }] }
+            estimated: { type: boolean }
+        funding_provider: { type: string }
+        payout_route: { type: array, items: { type: string }, description: "Payout providers, in the order they'd be tried." }
+        country: { type: string }
+        expires_at: { type: string, format: date-time }
+    Transfer:
+      type: object
+      properties:
+        reference: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/TransferStatus' }
+        status_label: { type: string, examples: [Awaiting PayPal payment] }
+        checkout_url: { type: string, format: uri, description: Where the sender pays with PayPal (when starting a transfer). }
+        replayed: { type: boolean }
+        origin: { type: string, description: "Where it was started, e.g. api, dashboard, agent or pay_link." }
+        sender_pays: { $ref: '#/components/schemas/Money' }
+        recipient_gets: { $ref: '#/components/schemas/Money' }
+        recipient:
+          type: object
+          properties:
+            account_number: { type: string }
+            country: { type: string }
+            name: { type: [string, 'null'] }
+        fx:
+          type: object
+          properties:
+            quote_id: { type: [string, 'null'] }
+            base_rate: { type: string }
+            effective_rate: { type: string }
+            margin_percent: { type: string }
+            margin_amount: { type: string }
+            rate_source: { oneOf: [{ $ref: '#/components/schemas/RateSource' }, { type: 'null' }] }
+        funding: { $ref: '#/components/schemas/Leg' }
+        payout: { $ref: '#/components/schemas/Leg' }
+        refund:
+          type: object
+          properties:
+            transaction_id: { type: string, format: uuid }
+            status: { $ref: '#/components/schemas/TransactionStatus' }
+        failure_reason: { type: string }
+        timeline:
+          type: array
+          items:
+            type: object
+            properties:
+              status: { $ref: '#/components/schemas/TransferStatus' }
+              note: { type: [string, 'null'] }
+              at: { type: string, format: date-time }
+    Leg:
+      type: object
+      properties:
+        provider: { type: [string, 'null'] }
+        transaction_id: { type: [string, 'null'], format: uuid }
+        status: { oneOf: [{ $ref: '#/components/schemas/TransactionStatus' }, { type: 'null' }] }
+
+    MerchantInput:
+      type: object
+      properties:
+        name: { type: string, maxLength: 120 }
+        email: { type: [string, 'null'], format: email, maxLength: 255 }
+        country: { $ref: '#/components/schemas/Country' }
+        wallet_number: { type: string, maxLength: 50, description: The mobile-money number it is settled to. }
+        wallet_name: { type: [string, 'null'], maxLength: 120 }
+        network: { type: [string, 'null'], maxLength: 50 }
+        commission_percent: { type: [number, 'null'], minimum: 0, maximum: 20, description: "The operator's commission per payment, up to 2 decimals." }
+        is_active: { type: boolean, description: false pauses the merchant. }
+    Merchant:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        slug: { type: string }
+        email: { type: [string, 'null'] }
+        country: { type: string }
+        country_name: { type: string }
+        currency: { type: string }
+        wallet_number: { type: string }
+        wallet_name: { type: [string, 'null'] }
+        network: { type: [string, 'null'] }
+        commission_percent: { type: string }
+        is_active: { type: boolean }
+        pay_url: { type: string, format: uri, description: The merchant's public pay page. }
+        created_at: { type: string, format: date-time }
+        stats:
+          type: object
+          description: Included when listing or getting a merchant.
+          properties:
+            payments: { type: integer }
+            settled: { type: string }
+            commission: { type: string }
+            by_currency:
+              type: array
+              items:
+                type: object
+                properties:
+                  currency: { type: string }
+                  settled: { type: string }
+                  commission: { type: string }
+            in_progress: { type: integer }
+            refunded: { type: integer }
+    MerchantPaymentInput:
+      type: object
+      required: [amount]
+      properties:
+        amount: { $ref: '#/components/schemas/AmountInput' }
+        mode:
+          type: string
+          enum: [source, target]
+          default: target
+          description: target (default) means `amount` is the merchant's price; source means it's what the customer pays.
+        source_currency: { type: string, description: What the customer pays in. One the account's PayPal collects. }
+        settle_currency: { type: string, description: What the merchant is settled in. One the account's payout providers settle in its country. }
+    MerchantQuote:
+      type: object
+      properties:
+        customer_pays: { $ref: '#/components/schemas/Money' }
+        merchant_price: { $ref: '#/components/schemas/Money' }
+        commission:
+          type: object
+          properties:
+            percent: { type: string }
+            amount: { type: string }
+            currency: { type: string }
+        merchant_receives: { $ref: '#/components/schemas/Money' }
+        fx:
+          type: object
+          properties:
+            effective_rate: { type: string }
+            margin_percent: { type: string }
+        settles_via: { type: [string, 'null'], description: The payout provider that would settle it. }
+        expires_at: { type: string, format: date-time }
+    Settlement:
+      description: A merchant payment and how it was settled.
+      allOf:
+        - $ref: '#/components/schemas/Transfer'
+        - type: object
+          properties:
+            merchant_id: { type: integer }
+            commission: { $ref: '#/components/schemas/Money' }
+            merchant_receives: { $ref: '#/components/schemas/Money' }
+            receipt_url: { type: string, format: uri, description: The customer's live receipt (when charging). }
+            is_final: { type: boolean }
+            created_at: { type: string, format: date-time }
+
+    PayLinkInput:
+      type: object
+      properties:
+        label: { type: [string, 'null'], maxLength: 120 }
+        pay_currencies:
+          type: [array, 'null']
+          items: { type: string }
+          description: Currencies customers may pay in. Each must be one the account's PayPal collects.
+        settle_currency: { type: string, description: What the merchant is settled in. }
+        amount: { type: [number, 'null'], exclusiveMinimum: 0, description: A fixed price in the settlement currency. }
+        reference: { type: [string, 'null'], maxLength: 100 }
+        is_active: { type: boolean }
+    PayLink:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        label: { type: [string, 'null'] }
+        url: { type: string, format: uri }
+        pay_currencies: { type: [array, 'null'], items: { type: string } }
+        settle_currency: { type: string }
+        amount: { type: [string, 'null'] }
+        reference: { type: [string, 'null'] }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        stats:
+          type: object
+          properties:
+            payments: { type: integer }
+            in_progress: { type: integer }
+            settled: { type: string }
+            has_payments: { type: boolean }
+
+    FxRate:
+      type: object
+      properties:
+        currency: { type: string }
+        base_rate: { type: number }
+        effective_rate: { type: number }
+        inverse_rate: { type: number }
+        decimals: { type: integer }
+        margin_percent: { type: number }
+        country_code: { type: [string, 'null'] }
+        country_name: { type: [string, 'null'] }
+        rate_source: { $ref: '#/components/schemas/RateSource' }
+    FxQuote:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        source_currency: { type: string }
+        target_currency: { type: string }
+        source_amount: { type: string }
+        target_amount: { type: string }
+        base_rate: { type: string }
+        effective_rate: { type: string }
+        margin_percent: { type: string }
+        margin_amount: { type: string }
+        is_fx: { type: boolean }
+        rate_source: { $ref: '#/components/schemas/RateSource' }
+        quoted_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        expires_in_seconds: { type: integer }
+        is_expired: { type: boolean }

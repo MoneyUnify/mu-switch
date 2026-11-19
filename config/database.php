@@ -67,6 +67,7 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                PDO::ATTR_PERSISTENT => true,
             ]) : [],
         ],
 
@@ -103,6 +104,9 @@ return [
             'prefix_indexes' => true,
             'search_path' => 'public',
             'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'options' => [
+                PDO::ATTR_PERSISTENT => true,
+            ],
         ],
 
         'sqlsrv' => [
@@ -156,16 +160,25 @@ return [
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
             'prefix' => env('REDIS_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')).'-database-'),
-            'persistent' => env('REDIS_PERSISTENT', false),
+            'persistent' => env('REDIS_PERSISTENT', true),
+            'tcp_keepalive' => (int) env('REDIS_TCP_KEEPALIVE', 60),
+            'timeout' => (float) env('REDIS_TIMEOUT', 5.0),
+            'read_timeout' => (float) env('REDIS_READ_TIMEOUT', 60.0),
+            'retry_interval' => (int) env('REDIS_RETRY_INTERVAL', 100),
         ],
 
         'default' => [
             'url' => env('REDIS_URL'),
             'host' => env('REDIS_HOST', '127.0.0.1'),
-            'username' => env('REDIS_USERNAME'),
-            'password' => env('REDIS_PASSWORD'),
+            'username' => in_array(env('REDIS_USERNAME'), [null, 'null', ''], true) ? null : env('REDIS_USERNAME'),
+            'password' => in_array(env('REDIS_PASSWORD'), [null, 'null', ''], true) ? null : env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_DB', '0'),
+            'persistent' => env('REDIS_PERSISTENT', true),
+            'tcp_keepalive' => (int) env('REDIS_TCP_KEEPALIVE', 60),
+            'timeout' => (float) env('REDIS_TIMEOUT', 5.0),
+            'read_timeout' => (float) env('REDIS_READ_TIMEOUT', 60.0),
+            'retry_interval' => (int) env('REDIS_RETRY_INTERVAL', 100),
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
@@ -175,10 +188,15 @@ return [
         'cache' => [
             'url' => env('REDIS_URL'),
             'host' => env('REDIS_HOST', '127.0.0.1'),
-            'username' => env('REDIS_USERNAME'),
-            'password' => env('REDIS_PASSWORD'),
+            'username' => in_array(env('REDIS_USERNAME'), [null, 'null', ''], true) ? null : env('REDIS_USERNAME'),
+            'password' => in_array(env('REDIS_PASSWORD'), [null, 'null', ''], true) ? null : env('REDIS_PASSWORD'),
             'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_CACHE_DB', '1'),
+            'persistent' => env('REDIS_PERSISTENT', true),
+            'tcp_keepalive' => (int) env('REDIS_TCP_KEEPALIVE', 60),
+            'timeout' => (float) env('REDIS_TIMEOUT', 5.0),
+            'read_timeout' => (float) env('REDIS_READ_TIMEOUT', 60.0),
+            'retry_interval' => (int) env('REDIS_RETRY_INTERVAL', 100),
             'max_retries' => env('REDIS_MAX_RETRIES', 3),
             'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
             'backoff_base' => env('REDIS_BACKOFF_BASE', 100),

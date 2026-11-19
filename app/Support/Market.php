@@ -59,6 +59,18 @@ class Market
     }
 
     /**
+     * A phone number in international MSISDN form (country code, no '+' or
+     * leading zero), e.g. "0977123456" in ZM becomes "260977123456".
+     */
+    public static function msisdn(string $number, string $country): string
+    {
+        $digits = ltrim(preg_replace('/\D/', '', $number) ?? '', '0');
+        $callingCode = self::callingCode($country);
+
+        return ! $callingCode || str_starts_with($digits, $callingCode) ? $digits : $callingCode.$digits;
+    }
+
+    /**
      * The international calling code for a country (e.g. ZM => "260").
      */
     public static function callingCode(string $country): ?string

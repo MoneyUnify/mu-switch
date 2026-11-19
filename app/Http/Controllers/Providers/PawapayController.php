@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Providers;
 
 use App\ApiResponse;
 use App\Contracts\PaymentProviderInterface;
+use App\Contracts\PayoutProviderInterface;
 use App\Enums\TransactionStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
@@ -20,17 +21,23 @@ use Illuminate\Support\Str;
 /**
  * pawaPay driver — mobile-money collections (deposits / push to pay).
  *
- * pawaPay authenticates with a single Bearer API token. A collection is a
- * "deposit": the driver first asks pawaPay's predict-correspondent endpoint
- * which mobile-money operator ("correspondent", e.g. MTN_MOMO_ZMB) the payer's
- * number belongs to, then initiates the deposit — which sends an STK/USSD push
- * prompt straight to the payer. Status is confirmed with the deposit status
- * endpoint. So a merchant only configures their API token and a call needs only
- * country + phone number.
+ * pawaPay API v2. pawaPay authenticates with a single Bearer API token. A
+ * collection is a "deposit": the driver first asks pawaPay's predict-provider
+ * endpoint which mobile-money provider (e.g. MTN_MOMO_ZMB) the payer's number
+ * belongs to, and gets the number back sanitised, then initiates the deposit,
+ * which sends a push prompt straight to the payer. Status is confirmed with the
+ * deposit status endpoint. So a merchant only configures their API token and a
+ * call needs only country + phone number.
  *
- * @see https://docs.pawapay.io/v1/api-reference/deposits/request-deposit
+ * Payouts send money to a mobile wallet the same way: the provider is
+ * predicted from the number, and the payout id is our transaction id, so a
+ * repeated request is ignored by pawaPay rather than paid twice.
+ *
+ * @see https://docs.pawapay.io/v2/api-reference/deposits/initiate-deposit
+ * @see https://docs.pawapay.io/v2/api-reference/payouts/initiate-payout
+ * @see https://docs.pawapay.io/v2/docs/upgrade_from_v1
  */
-class PawapayController extends Controller implements PaymentProviderInterface
+class PawapayController extends Controller implements PaymentProviderInterface, PayoutProviderInterface
 {
     public const PROVIDER_NAME = 'pawaPay';
 
@@ -55,14 +62,41 @@ class PawapayController extends Controller implements PaymentProviderInterface
      */
     public const CONFIG_FIELDS = [
         ['key' => 'api_token', 'label' => 'API Token', 'type' => 'password'],
+        [
+            'key' => 'environment',
+            'label' => 'Environment',
+            'type' => 'text',
+            'options' => ['live', 'sandbox'],
+            'rules' => 'string|in:live,sandbox',
+            'required' => false,
+            'help' => 'Use sandbox with a pawaPay sandbox API token for testing.',
+        ],
     ];
 
     /**
-     * pawaPay production host (we run providers in production only).
+     * pawaPay hosts per environment. Providers saved before this setting existed are live.
+     *
+     * @var array<string, string>
      */
-    private const BASE_URL = 'https://api.pawapay.io';
+    private const BASE_URLS = [
+        'live' => 'https://api.pawapay.io',
+        'sandbox' => 'https://api.sandbox.pawapay.io',
+    ];
+
+    /**
+     * Initiation statuses meaning pawaPay has taken the deposit or payout on.
+     * A duplicate is one pawaPay already accepted under the same id.
+     *
+     * @var list<string>
+     */
+    private const ACCEPTED = ['ACCEPTED', 'DUPLICATE_IGNORED'];
+
+    /** How long an unanswered payout request waits before NOT_FOUND counts as never received. */
+    private const NOT_FOUND_GRACE_MINUTES = 2;
 
     private string $apiToken;
+
+    private string $baseUrl = self::BASE_URLS['live'];
 
     public ?PaymentProvider $provider = null;
 
@@ -73,13 +107,14 @@ class PawapayController extends Controller implements PaymentProviderInterface
     {
         $config = is_string($provider->config) ? json_decode($provider->config, true) : $provider->config;
 
-        $apiToken = $config['api_token'] ?? null;
+        $apiToken = self::cleanToken($config['api_token'] ?? null);
 
         if (! $apiToken) {
             return ApiResponse::error('API Token is required for the pawaPay provider', 400);
         }
 
         $this->apiToken = $apiToken;
+        $this->baseUrl = self::BASE_URLS[$config['environment'] ?? 'live'] ?? self::BASE_URLS['live'];
         $this->provider = $provider;
 
         return null;
@@ -94,11 +129,14 @@ class PawapayController extends Controller implements PaymentProviderInterface
         $currency = Market::currency($country);
         $msisdn = $this->normaliseMsisdn($request['account_number'], $country);
 
-        // Which mobile-money operator the payer's number belongs to — supplied
+        // Which mobile-money provider the payer's number belongs to: supplied
         // by the caller, else predicted by pawaPay from the number.
-        $correspondent = trim((string) $request->input('correspondent')) ?: $this->predictCorrespondent($msisdn);
-        if (! $correspondent) {
-            return ApiResponse::error("Could not determine the mobile-money operator for {$msisdn}", 422);
+        [$provider, $msisdn, $rejected] = $this->provider(trim((string) ($request->input('provider') ?: $request->input('correspondent'))), $msisdn);
+        if ($rejected) {
+            return ApiResponse::error($rejected, 502);
+        }
+        if (! $provider) {
+            return ApiResponse::error("Could not determine the mobile-money provider for {$msisdn}", 422);
         }
 
         $customer = $this->resolveCustomer($msisdn, $country);
@@ -122,29 +160,25 @@ class PawapayController extends Controller implements PaymentProviderInterface
 
         $response = Http::withToken($this->apiToken)
             ->acceptJson()
-            ->post(self::BASE_URL.'/deposits', [
+            ->post($this->baseUrl.'/v2/deposits', [
                 'depositId' => $depositId,
+                'payer' => ['type' => 'MMO', 'accountDetails' => ['phoneNumber' => $msisdn, 'provider' => $provider]],
                 'amount' => $this->formatAmount($request['amount']),
                 'currency' => $currency,
-                'correspondent' => $correspondent,
-                'payer' => ['type' => 'MSISDN', 'address' => ['value' => $msisdn]],
-                'customerTimestamp' => now()->utc()->format('Y-m-d\TH:i:s\Z'),
-                'statementDescription' => $this->statementDescription($request),
+                'customerMessage' => $this->customerMessage($request->input('narration')),
             ]);
 
         // pawaPay acknowledges an accepted deposit with status "ACCEPTED" (the
         // push is now on its way to the payer). Anything else is a failure.
-        $status = (string) $response->json('status');
-        $accepted = $response->successful() && strcasecmp($status, 'ACCEPTED') === 0;
+        $status = strtoupper((string) $response->json('status'));
+        $accepted = $response->successful() && in_array($status, self::ACCEPTED, true);
 
         if (! $accepted) {
             $transaction->update([
                 'status' => TransactionStatus::FAILED,
                 'provider_response' => $response->json() ?: ['body' => $response->body()],
             ]);
-            $message = $response->json('rejectionReason.rejectionMessage')
-                ?? $response->json('message')
-                ?? 'pawaPay payment request failed';
+            $message = self::failureMessage($response->json()) ?? 'pawaPay payment request failed';
             $statusCode = $response->status() >= 400 ? $response->status() : 422;
 
             return ApiResponse::error($message, $statusCode);
@@ -169,17 +203,17 @@ class PawapayController extends Controller implements PaymentProviderInterface
     {
         $response = Http::withToken($this->apiToken)
             ->acceptJson()
-            ->get(self::BASE_URL.'/deposits/'.$transaction->transaction_id);
+            ->get($this->baseUrl.'/v2/deposits/'.$transaction->transaction_id);
 
         if (! $response->successful()) {
-            $message = $response->json('message') ?? 'Unable to verify the transaction with pawaPay';
+            $message = self::failureMessage($response->json()) ?? 'Unable to verify the transaction with pawaPay';
             $statusCode = $response->status() >= 400 ? $response->status() : 502;
 
             return ApiResponse::error($message, $statusCode);
         }
 
-        // The status endpoint returns an array with at most one deposit object.
-        $deposit = $response->json()[0] ?? [];
+        // FOUND, with the deposit under `data`; NOT_FOUND leaves it pending, as before.
+        $deposit = $response->json('status') === 'FOUND' ? (array) $response->json('data', []) : [];
         $providerStatus = (string) ($deposit['status'] ?? '');
         $status = self::mapStatus($providerStatus);
 
@@ -199,15 +233,187 @@ class PawapayController extends Controller implements PaymentProviderInterface
     }
 
     /**
-     * Predict the correspondent (mobile-money operator) for a number.
+     * Send the payout to the recipient's mobile wallet.
      */
-    private function predictCorrespondent(string $msisdn): ?string
+    public function requestPayout(Transaction $transaction, array $recipient): JsonResponse
+    {
+        $msisdn = $this->normaliseMsisdn($recipient['account_number'], $transaction->country);
+        [$provider, $msisdn, $rejected] = $this->provider(trim((string) ($recipient['network'] ?? '')), $msisdn);
+
+        // Nothing was sent to pawaPay, so the payout can safely fail here.
+        if ($rejected) {
+            return $this->failPayout($transaction, $rejected, ['phoneNumber' => $msisdn]);
+        }
+
+        if (! $provider) {
+            return $this->failPayout($transaction, "Could not determine the mobile-money provider for {$msisdn}", ['phoneNumber' => $msisdn]);
+        }
+
+        $response = Http::withToken($this->apiToken)
+            ->acceptJson()
+            ->post($this->baseUrl.'/v2/payouts', [
+                'payoutId' => $transaction->transaction_id,
+                'recipient' => ['type' => 'MMO', 'accountDetails' => ['phoneNumber' => $msisdn, 'provider' => $provider]],
+                'amount' => $this->formatAmount($transaction->amount),
+                'currency' => $transaction->currency,
+                'customerMessage' => $this->customerMessage($recipient['narration'] ?? null),
+            ]);
+
+        // pawaPay didn't give a definite answer: the payout may exist, so it must be verified.
+        if ($response->serverError()) {
+            $transaction->update(['provider_response' => ['request' => $response->json() ?: ['body' => $response->body()]]]);
+
+            return ApiResponse::error('pawaPay did not confirm the payout; verify it before retrying', 502);
+        }
+
+        $status = strtoupper((string) $response->json('status'));
+
+        if (! $response->successful() || ! in_array($status, self::ACCEPTED, true)) {
+            $message = self::failureMessage($response->json()) ?? 'pawaPay rejected the payout';
+
+            return $this->failPayout($transaction, $message, $response->json() ?: ['body' => $response->body()]);
+        }
+
+        $transaction->update([
+            'status' => TransactionStatus::PENDING,
+            'provider_response' => ['request' => $response->json()],
+        ]);
+
+        return ApiResponse::success('Payout initiated successfully', [
+            'transaction_id' => $transaction->transaction_id,
+            'reference' => $transaction->provider_transaction_id,
+            'status' => $transaction->status->value,
+        ]);
+    }
+
+    /**
+     * Re-check a payout with pawaPay and persist its latest status.
+     */
+    public function verifyPayout(Transaction $transaction): JsonResponse
     {
         $response = Http::withToken($this->apiToken)
             ->acceptJson()
-            ->post(self::BASE_URL.'/v1/predict-correspondent', ['msisdn' => $msisdn]);
+            ->get($this->baseUrl.'/v2/payouts/'.$transaction->transaction_id);
 
-        return $response->successful() ? ($response->json('correspondent') ?: null) : null;
+        if (! $response->successful()) {
+            return ApiResponse::error(self::failureMessage($response->json()) ?? 'Unable to verify the payout with pawaPay', 502);
+        }
+
+        $payout = $response->json('status') === 'FOUND' ? (array) $response->json('data', []) : null;
+        $providerStatus = $payout ? strtoupper((string) ($payout['status'] ?? '')) : 'NOT_FOUND';
+        $status = $payout ? self::mapStatus($providerStatus) : $this->notFoundStatus($transaction);
+
+        $failure = self::failureMessage($payout);
+
+        $transaction->update([
+            'status' => $status,
+            // pawaPay's reason, where the transfer timeline and Transfers page look for it.
+            'provider_response' => array_filter([...($transaction->provider_response ?? []), 'status' => $response->json(), 'message' => $failure], fn ($value): bool => $value !== null),
+        ]);
+
+        return ApiResponse::status($status->value, self::statusMessage($status), [
+            'transaction_id' => $transaction->transaction_id,
+            'reference' => $transaction->provider_transaction_id,
+            'status' => $status->value,
+            'provider_status' => $providerStatus,
+            'failure_reason' => $failure,
+            'amount' => (float) $transaction->amount,
+            'currency' => $transaction->currency,
+        ]);
+    }
+
+    /**
+     * What NOT_FOUND means for a payout. One pawaPay acknowledged is never
+     * treated as lost: it stays pending. One whose request got no answer
+     * (a dropped connection or a server error) is only taken as never
+     * received once it's old enough that pawaPay would have it by now, so a
+     * slow pawaPay can't lead to it being paid out a second time elsewhere.
+     */
+    private function notFoundStatus(Transaction $transaction): TransactionStatus
+    {
+        $acknowledged = in_array(strtoupper((string) data_get($transaction->provider_response, 'request.status')), self::ACCEPTED, true);
+
+        if ($acknowledged || $transaction->created_at?->gt(now()->subMinutes(self::NOT_FOUND_GRACE_MINUTES))) {
+            return TransactionStatus::PENDING;
+        }
+
+        return TransactionStatus::FAILED;
+    }
+
+    /**
+     * Mark a payout pawaPay definitely refused, so another provider may be tried.
+     *
+     * @param  array<string, mixed>  $response
+     */
+    private function failPayout(Transaction $transaction, string $message, array $response): JsonResponse
+    {
+        $transaction->update([
+            'status' => TransactionStatus::FAILED,
+            'provider_response' => ['request' => $response, 'message' => $message],
+        ]);
+
+        return ApiResponse::error($message, 422);
+    }
+
+    /**
+     * The mobile-money provider for a number, and the number to send:
+     * a given provider is used as is; otherwise pawaPay predicts it and
+     * returns the number sanitised.
+     *
+     * @return array{0: ?string, 1: string}
+     */
+    /**
+     * The mobile-money provider for a number: the caller's, else pawaPay's
+     * prediction. The third value explains a refusal that isn't about the
+     * number, such as pawaPay rejecting the API token.
+     *
+     * @return array{0: ?string, 1: string, 2: ?string}
+     */
+    private function provider(string $given, string $msisdn): array
+    {
+        if ($given !== '') {
+            return [strtoupper($given), $msisdn, null];
+        }
+
+        $response = Http::withToken($this->apiToken)
+            ->acceptJson()
+            ->post($this->baseUrl.'/v2/predict-provider', ['phoneNumber' => $msisdn]);
+
+        if (in_array($response->status(), [401, 403], true)) {
+            $environment = str_contains($this->baseUrl, 'sandbox') ? 'sandbox' : 'live';
+            $reason = self::failureMessage($response->json()) ?? 'The API token was refused';
+
+            return [null, $msisdn, "pawaPay rejected the API token ({$reason}). Check the token on the Providers page: it must be a {$environment} token for the {$environment} environment."];
+        }
+
+        if (! $response->successful() || ! filled($response->json('provider'))) {
+            return [null, $msisdn, null];
+        }
+
+        return [(string) $response->json('provider'), (string) ($response->json('phoneNumber') ?: $msisdn), null];
+    }
+
+    /**
+     * The token as pawaPay expects it: no surrounding spaces, line breaks or
+     * quotes, which easily come along when it's pasted.
+     */
+    private static function cleanToken(mixed $token): ?string
+    {
+        $token = trim(trim((string) $token), "\"'");
+
+        return $token === '' ? null : $token;
+    }
+
+    /**
+     * pawaPay's reason for a refusal or failure (v2's `failureReason`).
+     *
+     * @param  array<string, mixed>|null  $body
+     */
+    private static function failureMessage(?array $body): ?string
+    {
+        $message = data_get($body, 'failureReason.failureMessage') ?? data_get($body, 'failureReason.failureCode');
+
+        return is_string($message) && $message !== '' ? $message : null;
     }
 
     /**
@@ -222,14 +428,15 @@ class PawapayController extends Controller implements PaymentProviderInterface
     }
 
     /**
-     * A 4–22 character alphanumeric statement description (shown to the payer).
+     * pawaPay's `customerMessage`: 4 to 22 letters, digits and spaces, shown
+     * to the payer or recipient where the provider supports it.
      */
-    private function statementDescription(Request $request): string
+    private function customerMessage(?string $narration): string
     {
-        $raw = preg_replace('/[^A-Za-z0-9]/', '', (string) $request->input('narration')) ?? '';
-        $description = substr($raw, 0, 22);
+        $raw = preg_replace('/[^A-Za-z0-9 ]/', '', (string) $narration) ?? '';
+        $message = trim(substr(preg_replace('/ {2,}/', ' ', trim($raw)) ?? '', 0, 22));
 
-        return strlen($description) >= 4 ? $description : 'MoneyUnify';
+        return strlen($message) >= 4 ? $message : 'MoneyUnify';
     }
 
     /**

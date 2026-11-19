@@ -56,6 +56,23 @@ collections in Zambia (`ZM`) and Malawi (`MW`). It:
 To enable it, add a provider in the dashboard, choose the **Lenco** driver, paste
 your Lenco API key, and set the supported countries to `ZM,MW`.
 
+### Payouts through Lenco
+
+Lenco also sends **payouts** to mobile wallets in Zambia (MTN, Airtel, Zamtel)
+and Malawi (Airtel, TNM), from one of your Lenco accounts. Payouts also power
+[cross-border transfers](/docs/api/cross-border-transfers), where the sender
+Payouts work automatically with your Lenco API key: the switch automatically
+discovers your active Lenco funding account and silently registers recipient
+mobile-money numbers on the fly, requiring no manual account or recipient ID setup.
+
+| | |
+| --- | --- |
+| **Endpoint** | `POST /transfers/mobile-money`, checked with `GET /transfers/status/{reference}` |
+| **Reference** | The switch's `transaction_id`, so a payout can always be looked up |
+| **Network** | Detected from the number in Zambia. In Malawi, only `099…` (Airtel) and `088…` (TNM) are detected. For other numbers, send `network` with [Send a Payout](/docs/api/payouts), or the payout is refused rather than sent to a guessed network. |
+| **Fee** | Estimated at K8.50 per transfer. |
+| **Unknown outcomes** | A Lenco server error, or a "duplicate reference" (an earlier attempt already reached Lenco), stops the switch: verify the payout before retrying. A transfer Lenco never created is marked failed on verify. |
+
 ## Built-in driver: Airtel Money
 
 The platform also ships an **Airtel Money** driver (`AirtelController`) for
@@ -315,22 +332,67 @@ Bearer API token, so you provide:
 | --- | --- |
 | **API Token** | Your pawaPay API token (sent as `Authorization: Bearer …`). |
 
-For each collection the driver first calls pawaPay's **predict-correspondent**
-endpoint to determine which mobile-money operator ("correspondent", e.g.
-`MTN_MOMO_ZMB`) the payer's number belongs to, then initiates the deposit
-(`POST /deposits`) — which sends an **STK/USSD push straight to the payer's
-handset**. The collection starts **pending** (status `ACCEPTED`); verification
-polls the deposit status (`GET /deposits/{depositId}` → `COMPLETED` → success,
-`FAILED` → failed, otherwise pending). As with every provider, a call needs only
-the country, phone number and amount.
+The driver uses **pawaPay API v2**. For each collection it first calls
+pawaPay's **predict-provider** endpoint (`POST /v2/predict-provider`) to find
+which mobile-money provider the payer's number belongs to (e.g.
+`MTN_MOMO_ZMB`) and get the number back sanitised, then initiates the deposit
+(`POST /v2/deposits`, the payer as an `MMO` account), which sends a **push
+prompt straight to the payer's handset**. The collection starts **pending**
+(status `ACCEPTED`); verification polls the deposit status
+(`GET /v2/deposits/{depositId}`: `COMPLETED` is success, `FAILED` is failed,
+anything else, or not found yet, stays pending). As with every provider, a call
+needs only the country, phone number and amount.
 
-> **Operator selection.** pawaPay routes to a specific operator by its
-> correspondent code. The driver derives it automatically from the phone number
-> (pawaPay's own prediction), so no per-market configuration is needed; a caller
-> may still pass an explicit `correspondent` to override it.
+> **Provider selection.** pawaPay routes to a specific provider by its code.
+> The driver derives it from the phone number (pawaPay's own prediction), so no
+> per-market configuration is needed; a caller may still pass `provider` (or
+> the older `correspondent`) to override it.
+
+**Payouts** (`POST /v2/payouts`) use our transaction id as the `payoutId`, so a
+repeated request is ignored by pawaPay (`DUPLICATE_IGNORED`) instead of paying
+twice. A refusal's `failureReason` is kept and shown on the transfer. A payout
+pawaPay accepted is never treated as lost; one whose request got no answer only
+counts as never received (`NOT_FOUND`) after two minutes, so a slow pawaPay
+can't lead to a second payout elsewhere. The text shown to the recipient
+(`customerMessage`) is the narration, cut to pawaPay's 4 to 22 letters, digits
+and spaces.
 
 To enable it, add a provider in the dashboard, choose the **pawaPay** driver,
 paste your API token, and tick the markets you serve.
+
+pawaPay also sends **payouts** to mobile wallets. See
+[Send a Payout](/docs/api/payouts). Its **Environment** setting chooses `live`
+(the default) or `sandbox`. Use sandbox with a sandbox API token to test both
+collections and payouts.
+
+### pawaPay Sandbox Test Numbers (Zambia)
+
+In pawaPay's sandbox, payouts behave based on specific test numbers. Note that arbitrary numbers (including those ending in `1111` or `11111`) do not fail on pawaPay—they will complete. Always use these exact numbers to test outcomes:
+
+| Outcome | Network | Local (10 digits) | International (12 digits) | Notes |
+| --- | --- | --- | --- | --- |
+| **Completed** | MTN | `0763456789` | `260763456789` | Payout completes |
+| | Airtel | `0973456789` | `260973456789` | Payout completes |
+| | Zamtel | `0953456700` | `260953456700` | Payout completes |
+| **Failed** (Refunded) | MTN | `0763456079` | `260763456079` | Refused ("exceeds max balance"); triggers PayPal refund |
+| | Airtel | `0973456089` | `260973456089` | Refused ("exceeds max balance"); triggers PayPal refund |
+| **Pending** | MTN | `0763456129` | `260763456129` | Stays submitted for status polling |
+| | Airtel | `0973456129` | `260973456129` | Stays submitted for status polling |
+
+## Built-in driver: Simulated Payouts (sandbox only)
+
+A payout driver for local demos and testing when no external payout provider is configured. It is never available in production and
+isn't counted in coverage. It needs no credentials. The recipient number decides
+the outcome (supports 10-digit local or 12-digit international format):
+
+| Outcome | Full Local (10 digits) | Full International (12 digits) | Suffix Rule | Result |
+| --- | --- | --- | --- | --- |
+| **Completed** | `0977123456` | `260977123456` | Any normal number | Accepted and completed on verification |
+| **Refused** | `0977120000` | `260977120000` | Ends in `0000` (or custom setting) | Refused; switch tries fallback or refunds |
+| **Fails Later** | `0966551111` | `260966551111` | Ends in `1111` | Accepted initially, fails on verification; refunds |
+| **Timeout / Unknown** | `0977129999` | `260977129999` | Ends in `9999` | No definite answer; requires verification |
+
+It charges an illustrative 1% payout fee, so fees and the ledger show up in demos.
 
 ## Built-in driver: DPO Pay
 
@@ -460,6 +522,143 @@ number and amount.
 To enable it, add a provider in the dashboard, choose the **Kazang** driver,
 paste your credentials, host and product IDs, tick the markets you serve, and
 complete the integration dialog for any non-Zambia market.
+
+## Built-in driver: PayPal
+
+The platform ships a **PayPal** driver (`PaypalController`) for **hosted
+checkout** through PayPal's Orders v2 API. The payer approves the payment on
+PayPal (wallet or card), so the switch returns a link instead of pushing a
+prompt to a phone. You provide:
+
+| Credential | Description |
+| --- | --- |
+| **Client ID** | Your PayPal REST app's client ID. |
+| **Client Secret** | The matching secret. |
+| **Environment** | `sandbox` for testing, `live` for real payments. |
+| **Webhook ID** *(optional)* | The ID of the webhook you registered in the PayPal app (see below). |
+
+Create the app at [developer.paypal.com](https://developer.paypal.com/dashboard/applications)
+to get the client ID and secret.
+
+**How a payment flows**
+
+1. Call [Request a Payment](/docs/api/request-payment) with a PayPal currency,
+   e.g. `"currency": "USD"`. PayPal only takes part when the request names a
+   currency it supports. Without one, the switch charges the country's own
+   currency, which PayPal can't settle.
+2. The response's `data.checkout_url` is where the payer approves the payment.
+   The transaction is **pending** until then.
+3. When the payer returns, the switch **captures** the order and sends them to
+   your `return_url` (or shows a confirmation page if you didn't pass one).
+   [Verifying](/docs/api/verify-payment) also captures an approved order, so
+   you never depend on the payer's browser coming back.
+
+Every call is idempotent (PayPal's `PayPal-Request-Id`), so a retry never
+charges twice. Orders the payer abandons or cancels end **failed**, and a
+cancelled order is never captured later.
+
+**Webhooks (recommended)**
+
+1. On **Providers**, edit the PayPal provider. The dialog shows its
+   **Webhook URL** (`https://your-domain.com/api/webhooks/paypal/{provider_id}`)
+   with a **Copy** button.
+2. In your PayPal app, choose **Add Webhook**, paste the URL and subscribe to:
+   `CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.COMPLETED`,
+   `PAYMENT.CAPTURE.DENIED`, `PAYMENT.CAPTURE.REFUNDED` and
+   `PAYMENT.CAPTURE.REVERSED`.
+3. Paste the new webhook's ID into the provider's **Webhook ID** and save.
+
+Each delivery's signature is checked with PayPal before anything happens, and
+duplicate deliveries are ignored. The switch answers straight away and handles
+the event in the background (retrying if PayPal can't be reached): it re-reads
+the order from PayPal, so the transaction settles even if neither the payer nor
+your app comes back, and refunds made in PayPal's dashboard are recorded. If
+PayPal reverses a payment that funded a transfer (a chargeback or bank
+reversal), the transfer's timeline gets a note to follow up with the sender.
+
+PayPal can charge AUD, BRL, CAD, CNY, CZK, DKK, EUR, GBP, HKD, HUF, ILS, JPY,
+MXN, MYR, NOK, NZD, PHP, PLN, SEK, SGD, CHF, THB, TWD and USD. HUF, JPY and TWD
+amounts must be whole numbers.
+
+**Fees.** Before capture, PayPal's fee is estimated from its published Checkout
+rate: 3.49% plus a fixed fee in the charged currency (0.49 USD, 0.39 EUR, 0.39
+GBP and so on). Once captured, the switch records the **exact** fee PayPal
+reports, and the transaction is marked **Actual**. If your PayPal rate differs,
+set a `fee_schedule` on the provider. Use [Quote a Payment](/docs/api/quote-payment)
+to see the fees before charging.
+
+### PayPal FX (exchange rates)
+
+When the PayPal business account has **FX as a Service**, the account's quotes
+use **PayPal's own exchange rates** (USD, EUR, GBP and other PayPal currencies
+into 100+ currencies, including ZMW, KES, GHS and NGN), and payments in another
+currency are converted by PayPal at a locked rate. Two optional settings:
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| **Exchange rates** | `paypal` | `paypal` uses PayPal's rates once FX is enabled on the account, and MoneyUnify's until then; `moneyunify` always uses MoneyUnify's. |
+| **PayPal settlement currency** | `USD` | The currency the PayPal account holds payments in. |
+
+See [PayPal FX](/docs/api/fx#paypal-fx) for how quotes, locking and the
+fallback work.
+
+### PayPal's button (JS SDK v6)
+
+Merchant pay pages show **PayPal's own button**, from PayPal's JS SDK v6, so
+the customer approves in PayPal's window without leaving the page. The page
+loads the SDK with the collecting PayPal account's **client ID** (public; the
+secret never leaves the server). The order is created on the server, PayPal's
+window approves it, and the server captures it before showing the receipt:
+
+1. `POST /pay/{merchant}/order` (or `/pay/l/{link}/order`) creates the order
+   and returns its `order_id`.
+2. PayPal's window opens from the click, and the customer approves.
+3. `POST /pay/receipt/{reference}/capture` captures it; the merchant is then
+   settled as usual.
+
+If the SDK can't load, or PayPal isn't available for the payer's currency, the
+page shows the classic **Pay with PayPal** button, which redirects to PayPal.
+**Debit or credit card** keeps using PayPal's guest card checkout.
+
+### Guest card checkout
+
+Payers don't need a PayPal account. Pass `"pay_with": "card"` to
+[Request a Payment](/docs/api/request-payment), a cross-border transfer or a
+merchant charge, and PayPal opens on its **guest debit or credit card form**
+(`landing_page: GUEST_CHECKOUT`) instead of its login. The pay links and the
+Send Money page offer both: **Pay with PayPal** and **Debit or credit card**.
+
+The card is charged by PayPal, so nothing else changes: the same capture,
+webhooks, refunds, receipt and payout. Where PayPal can't offer guest checkout
+(the payer's country, or **PayPal account optional** is off in the business
+account's *Website preferences*), PayPal shows its usual login, and the payment
+goes through as it always does.
+
+### Refund emails
+
+When a refund completes (from the dashboard, the API, PayPal itself, or a
+cross-border transfer that couldn't be delivered), the payer is emailed once
+with the amount, the reference and their PayPal-verified receipt. The email goes
+to the address given for the payment; payments without one aren't emailed.
+
+### PayPal-verified receipts
+
+After paying, the payer sees a receipt built from **PayPal's own record** of
+the payment, re-checked with PayPal (at most once a minute):
+
+- PayPal's **transaction ID** (the capture) and order ID, and the time PayPal
+  recorded the payment;
+- the payer as PayPal identified them (name, masked email, verified account);
+- the status (**Completed**, **Partially refunded** or **Refunded**, including
+  refunds made in PayPal) and **seller protection**;
+- for cross-border and merchant payments, what the recipient receives and the
+  delivery status.
+
+PayPal's fee is never shown to the payer. The receipt can be printed or saved
+as a PDF, and has a permanent signed link (`/receipts/paypal/{transaction}`).
+PayPal also emails the payer its official receipt; this page says so and points
+to their PayPal activity, where the same transaction ID appears. Merchant
+customers see the same details on their live receipt page.
 
 ## Adding your own driver
 

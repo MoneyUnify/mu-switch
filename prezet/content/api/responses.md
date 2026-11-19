@@ -85,6 +85,8 @@ Only the [verification endpoint](/docs/api/verify-payment) returns `failed` or
 | `422` | `The amount field is required.` | Validation failed for `amount`, `account_number`, or `country`. |
 | `400` | `Providers not configured yet. Please configure at least 1 (one) provider` | Your account has no providers. |
 | `400` | `No active providers support the requested country` | No active provider serves the requested `country`. |
+| `400` | `No active providers support USD payments in ZM` | Providers serve the `country`, but none can charge the requested `currency`. |
+| `422` | `USD amounts can have at most 2 decimal places` | [Quote a Payment](/docs/api/quote-payment): the amount is finer than the currency allows. |
 | `400` | `Unsupported mobile operator` | The account number didn't map to a supported operator (provider-level). |
 | `4xx` | *(provider message)* | The provider that processed the request returned an error; the switch surfaces the last provider error after fallback. |
 | `500` | `No provider could process the payment request` | Every eligible provider failed. |

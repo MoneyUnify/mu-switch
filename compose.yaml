@@ -1,0 +1,53 @@
+# Run MoneyUnify Switch locally with Docker: the app (web, queue worker and
+# scheduler) and its own Postgres. Start it with `docker compose up --build`
+# and open http://localhost:8000. See prezet/content/docker.md.
+services:
+  app:
+    build: .
+    ports:
+      - "${APP_PORT:-8000}:10000"
+    depends_on:
+      db:
+        condition: service_healthy
+    # Optional: your own sandbox keys (copy .env.docker.example to .env.docker).
+    env_file:
+      - path: .env.docker
+        required: false
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: "http://localhost:${APP_PORT:-8000}"
+      LOG_CHANNEL: stderr
+      DB_CONNECTION: pgsql
+      DB_URL: ""
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_DATABASE: moneyunify
+      DB_USERNAME: moneyunify
+      DB_PASSWORD: moneyunify
+      SESSION_DRIVER: database
+      CACHE_STORE: database
+      QUEUE_CONNECTION: database
+      MAIL_MAILER: log
+      SEED_DEMO_DATA: "${SEED_DEMO_DATA:-true}"
+    volumes:
+      # Keeps uploads and the generated app key between restarts.
+      - app-storage:/var/www/html/storage/app
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: moneyunify
+      POSTGRES_USER: moneyunify
+      POSTGRES_PASSWORD: moneyunify
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moneyunify -d moneyunify"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  app-storage:
+  db-data:

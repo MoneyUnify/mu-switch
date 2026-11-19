@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Enums\TransactionStatus;
 use App\Models\PaymentProvider;
 use App\Models\Transaction;
+use App\Support\Market;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -47,13 +48,15 @@ class DashboardController extends Controller
         $now = Carbon::now();
         $periodStart = $now->copy()->subDays(self::PERIOD_DAYS);
         $previousStart = $now->copy()->subDays(self::PERIOD_DAYS * 2);
+        $trendData = $this->volumeTrendData($providerIds);
 
         return Inertia::render('dashboard', [
             'apiToken' => $user->ensureApiToken(),
             'currency' => $this->dominantCurrency($providerIds),
             'hasProviders' => $providers->isNotEmpty(),
             'stats' => $this->stats($providerIds, $periodStart, $previousStart, $providers),
-            'volumeTrend' => $this->volumeTrend($providerIds),
+            'volumeTrend' => $trendData['points'],
+            'trendCurrencies' => $trendData['currencies'],
             'statusBreakdown' => $this->statusBreakdown($providerIds, $periodStart),
             'providerPerformance' => $this->providerPerformance($providers, $providerIds, $periodStart, $request),
             'recentTransactions' => $this->recentTransactions($providerIds, $request),
@@ -89,6 +92,7 @@ class DashboardController extends Controller
             'volume' => [
                 'value' => round((float) $current['volume'], 2),
                 'change' => $this->percentChange((float) $current['volume'], (float) $previous['volume']),
+                'currencies' => $this->topCurrenciesVolume($providerIds, $periodStart, $previousStart, $providers),
             ],
             'transactions' => [
                 'value' => (int) $current['total'],
@@ -107,6 +111,76 @@ class DashboardController extends Controller
                 'change' => $this->percentChange((float) $current['failed'], (float) $previous['failed']),
             ],
         ];
+    }
+
+    /**
+     * Top 3 or 4 currencies by transaction volume / activity for multi-currency KPI.
+     *
+     * @param  Collection<int, int>  $providerIds
+     * @param  Collection<int, PaymentProvider>  $providers
+     * @return list<array{currency: string, value: float, change: ?float, count: int}>
+     */
+    private function topCurrenciesVolume(Collection $providerIds, Carbon $periodStart, Carbon $previousStart, Collection $providers): array
+    {
+        $currentByCurrency = Transaction::query()
+            ->whereIn('payment_provider_id', $providerIds)
+            ->whereBetween('created_at', [$periodStart, Carbon::now()])
+            ->where('status', TransactionStatus::SUCCESS->value)
+            ->selectRaw('currency, coalesce(sum(amount), 0) as volume, count(*) as count')
+            ->groupBy('currency')
+            ->orderByDesc('volume')
+            ->get()
+            ->keyBy('currency');
+
+        $previousByCurrency = Transaction::query()
+            ->whereIn('payment_provider_id', $providerIds)
+            ->whereBetween('created_at', [$previousStart, $periodStart])
+            ->where('status', TransactionStatus::SUCCESS->value)
+            ->selectRaw('currency, coalesce(sum(amount), 0) as volume')
+            ->groupBy('currency')
+            ->pluck('volume', 'currency');
+
+        $allTimeCurrencies = Transaction::query()
+            ->whereIn('payment_provider_id', $providerIds)
+            ->selectRaw('currency, count(*) as count')
+            ->groupBy('currency')
+            ->orderByDesc('count')
+            ->pluck('currency');
+
+        $providerCurrencies = collect();
+        foreach ($providers as $provider) {
+            if (! empty($provider->config['supported_countries'])) {
+                foreach ((array) $provider->config['supported_countries'] as $country) {
+                    if ($curr = Market::currency((string) $country)) {
+                        $providerCurrencies->push($curr);
+                    }
+                }
+            }
+        }
+
+        $fallbackCurrencies = collect(['USD', 'ZMW', 'KES', 'EUR']);
+
+        $orderedCodes = $currentByCurrency->keys()
+            ->concat($allTimeCurrencies)
+            ->concat($providerCurrencies)
+            ->concat($fallbackCurrencies)
+            ->unique()
+            ->take(4)
+            ->values();
+
+        return $orderedCodes->map(function (string $code) use ($currentByCurrency, $previousByCurrency): array {
+            $row = $currentByCurrency->get($code);
+            $vol = (float) ($row->volume ?? 0.0);
+            $count = (int) ($row->count ?? 0);
+            $prevVol = (float) ($previousByCurrency->get($code) ?? 0.0);
+
+            return [
+                'currency' => $code,
+                'value' => round($vol, 2),
+                'change' => $this->percentChange($vol, $prevVol),
+                'count' => $count,
+            ];
+        })->all();
     }
 
     /**
@@ -135,12 +209,15 @@ class DashboardController extends Controller
     }
 
     /**
-     * Daily transaction count and successful volume for the trend chart.
+     * Daily transaction trend with per-currency breakdowns and active currencies for the trend chart.
      *
      * @param  Collection<int, int>  $providerIds
-     * @return list<array{date: string, label: string, count: int, volume: float}>
+     * @return array{
+     *     points: list<array<string, mixed>>,
+     *     currencies: list<array{currency: string, count: int, volume: float}>
+     * }
      */
-    private function volumeTrend(Collection $providerIds): array
+    private function volumeTrendData(Collection $providerIds): array
     {
         $start = Carbon::now()->subDays(self::TREND_DAYS - 1)->startOfDay();
 
@@ -148,26 +225,76 @@ class DashboardController extends Controller
             ->whereIn('payment_provider_id', $providerIds)
             ->where('created_at', '>=', $start)
             ->selectRaw('date(created_at) as day')
+            ->selectRaw("coalesce(nullif(currency, ''), 'USD') as currency_code")
             ->selectRaw('count(*) as count')
             ->selectRaw("coalesce(sum(case when status = 'success' then amount else 0 end), 0) as volume")
-            ->groupBy('day')
-            ->get()
-            ->keyBy('day');
+            ->groupBy('day', 'currency_code')
+            ->get();
 
-        return collect(range(0, self::TREND_DAYS - 1))
-            ->map(function (int $offset) use ($start, $rows): array {
+        // Identify currencies that have actually transacted in this 14-day window.
+        $currencyTotals = $rows->groupBy('currency_code')
+            ->map(fn ($group, $code) => [
+                'currency' => (string) $code,
+                'count' => (int) $group->sum('count'),
+                'volume' => round((float) $group->sum('volume'), 2),
+            ])
+            ->sortByDesc('count')
+            ->values();
+
+        $activeCurrencies = $currencyTotals->pluck('currency')->all();
+        $rowsByDay = $rows->groupBy('day');
+
+        $points = collect(range(0, self::TREND_DAYS - 1))
+            ->map(function (int $offset) use ($start, $rowsByDay, $activeCurrencies): array {
                 $date = $start->copy()->addDays($offset);
                 $key = $date->format('Y-m-d');
-                $row = $rows->get($key);
+                $dayRows = $rowsByDay->get($key, collect());
 
-                return [
+                $byCurrency = [];
+                $flatKeys = [];
+
+                foreach ($activeCurrencies as $currency) {
+                    $match = $dayRows->firstWhere('currency_code', $currency);
+                    $cCount = (int) ($match->count ?? 0);
+                    $cVolume = round((float) ($match->volume ?? 0), 2);
+
+                    $byCurrency[$currency] = [
+                        'count' => $cCount,
+                        'volume' => $cVolume,
+                    ];
+
+                    $flatKeys["{$currency}_count"] = $cCount;
+                    $flatKeys["{$currency}_volume"] = $cVolume;
+                }
+
+                $totalCount = (int) $dayRows->sum('count');
+                $totalVolume = round((float) $dayRows->sum('volume'), 2);
+
+                return array_merge([
                     'date' => $key,
                     'label' => $date->format('M j'),
-                    'count' => (int) ($row->count ?? 0),
-                    'volume' => round((float) ($row->volume ?? 0), 2),
-                ];
+                    'count' => $totalCount,
+                    'volume' => $totalVolume,
+                    'byCurrency' => $byCurrency,
+                ], $flatKeys);
             })
             ->all();
+
+        return [
+            'points' => $points,
+            'currencies' => $currencyTotals->all(),
+        ];
+    }
+
+    /**
+     * Daily transaction count and successful volume for the trend chart.
+     *
+     * @param  Collection<int, int>  $providerIds
+     * @return list<array<string, mixed>>
+     */
+    private function volumeTrend(Collection $providerIds): array
+    {
+        return $this->volumeTrendData($providerIds)['points'];
     }
 
     /**
@@ -297,16 +424,16 @@ class DashboardController extends Controller
 
         return Transaction::query()
             ->whereIn('payment_provider_id', $providerIds)
-            ->with(['paymentProvider:id,name,logo_url', 'customer:id,name,email'])
+            ->with(['paymentProvider:id,name,class,logo_url', 'customer:id,name,email'])
             ->when($search !== '', function (Builder $query) use ($search): void {
                 $like = '%'.$search.'%';
                 $query->where(function (Builder $inner) use ($like, $search): void {
-                    $inner->where('transaction_id', 'like', $like)
-                        ->orWhere('currency', 'like', $like)
-                        ->orWhere('status', 'like', $like)
+                    $inner->whereLike('transaction_id', $like)
+                        ->orWhereLike('currency', $like)
+                        ->orWhereLike('status', $like)
                         ->when(is_numeric($search), fn (Builder $q) => $q->orWhere('amount', $search))
-                        ->orWhereHas('customer', fn (Builder $c) => $c->where('name', 'like', $like)->orWhere('email', 'like', $like))
-                        ->orWhereHas('paymentProvider', fn (Builder $p) => $p->where('name', 'like', $like));
+                        ->orWhereHas('customer', fn (Builder $c) => $c->whereLike('name', $like)->orWhereLike('email', $like))
+                        ->orWhereHas('paymentProvider', fn (Builder $p) => $p->whereLike('name', $like));
                 });
             })
             ->latest()

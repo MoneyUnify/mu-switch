@@ -1,5 +1,4 @@
 import { Link, usePage } from '@inertiajs/react';
-import providers from '@/routes/providers';
 import { BookOpen, Sliders, LayoutGrid, Menu, Search } from 'lucide-react';
 import AppLogo from '@/components/app-logo';
 import AppLogoIcon from '@/components/app-logo-icon';
@@ -34,6 +33,7 @@ import { useCurrentUrl } from '@/hooks/use-current-url';
 import { useInitials } from '@/hooks/use-initials';
 import { cn, toUrl } from '@/lib/utils';
 import { dashboard } from '@/routes';
+import providers from '@/routes/providers';
 import type { BreadcrumbItem, NavItem } from '@/types';
 
 type Props = {
@@ -228,7 +228,7 @@ export function AppHeader({ breadcrumbs = [] }: Props) {
                                     </Avatar>
                                 </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent className="w-56" align="end">
+                            <DropdownMenuContent className="w-60" align="end">
                                 {auth.user && (
                                     <UserMenuContent user={auth.user} />
                                 )}

@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Contracts\PaymentProviderInterface;
-use App\Enums\TransactionStatus;
+use App\Http\Controllers\Providers\PaypalController;
 use App\Models\PaymentProvider;
 use App\Models\ProviderLog;
-use App\Models\Transaction;
+use App\Support\Currency;
+use App\Support\DriverRegistry;
+use App\Support\Ledger\LedgerBalance;
 use App\Support\Market;
+use App\Support\Paypal\PaypalFxRates;
+use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -24,79 +27,49 @@ class ProviderController extends Controller
     public function index(Request $request): Response
     {
         $drivers = [];
-        $files = glob(app_path('Http/Controllers/Providers/*.php'));
 
-        if ($files) {
-            foreach ($files as $file) {
-                $className = 'App\\Http\\Controllers\\Providers\\'.pathinfo($file, PATHINFO_FILENAME);
-                if (class_exists($className) && is_subclass_of($className, PaymentProviderInterface::class)) {
-                    $name = defined($className.'::PROVIDER_NAME') ? $className::PROVIDER_NAME : pathinfo($file, PATHINFO_FILENAME);
-                    if (! defined($className.'::PROVIDER_NAME') && str_ends_with($name, 'Controller')) {
-                        $name = substr($name, 0, -10);
-                    }
-
-                    $supported = $this->supportedCountriesFor($className);
-                    $defaults = defined($className.'::DEFAULT_COUNTRIES')
-                        ? array_map('trim', explode(',', $className::DEFAULT_COUNTRIES))
-                        : $supported;
-
-                    $drivers[] = [
-                        'name' => $name,
-                        'class' => $className,
-                        // The markets this driver can serve, with name + currency, for the country checkboxes.
-                        'supported_country_options' => Market::options($supported),
-                        // Pre-ticked markets when adding the provider.
-                        'default_countries' => array_values(array_intersect($defaults, $supported)),
-                        // Default (hard-coded) logo for this driver, editable in the dialog.
-                        'default_logo' => defined($className.'::DEFAULT_LOGO') ? $className::DEFAULT_LOGO : null,
-                        // The credential inputs the dashboard should render for this driver.
-                        'config_fields' => $this->configFieldsFor($className),
-                        // Optional per-market input (e.g. an operator code for each ticked country).
-                        'market_field' => $this->marketFieldFor($className),
-                        // Optional per-market integration dialog — a set of extra
-                        // inputs some countries need (e.g. Kazang's ZA/NA/BW).
-                        'market_extra' => $this->marketExtraFor($className),
-                    ];
-                }
+        foreach (DriverRegistry::classes() as $className) {
+            $name = defined($className.'::PROVIDER_NAME') ? $className::PROVIDER_NAME : class_basename($className);
+            if (! defined($className.'::PROVIDER_NAME') && str_ends_with($name, 'Controller')) {
+                $name = substr($name, 0, -10);
             }
+
+            $supported = $this->supportedCountriesFor($className);
+            $defaults = defined($className.'::DEFAULT_COUNTRIES')
+                ? array_map('trim', explode(',', $className::DEFAULT_COUNTRIES))
+                : $supported;
+
+            $drivers[] = [
+                'name' => $name,
+                'class' => $className,
+                // What the driver can do: collections, payouts, or both.
+                'capabilities' => DriverRegistry::capabilities($className),
+                // The markets this driver can serve, with name + currency, for the country checkboxes.
+                'supported_country_options' => Market::options($supported),
+                // The currencies this driver can charge, for filtering the driver picker.
+                'supported_currencies' => $this->supportedCurrenciesFor($className, $supported),
+                // Pre-ticked markets when adding the provider.
+                'default_countries' => array_values(array_intersect($defaults, $supported)),
+                // Default (hard-coded) logo for this driver, editable in the dialog.
+                'default_logo' => defined($className.'::DEFAULT_LOGO') ? $className::DEFAULT_LOGO : null,
+                // The credential inputs the dashboard should render for this driver.
+                'config_fields' => $this->configFieldsFor($className),
+                // Optional per-market input (e.g. an operator code for each ticked country).
+                'market_field' => $this->marketFieldFor($className),
+                // Optional per-market integration dialog — a set of extra
+                // inputs some countries need (e.g. Kazang's ZA/NA/BW).
+                'market_extra' => $this->marketExtraFor($className),
+            ];
         }
 
         $user = $request->user();
-        $accounts = $this->accountSummaries($user->paymentProviders()->pluck('id'));
+        // Balances come from the ledger: collections in; fees and payouts out.
+        $accounts = LedgerBalance::summaries($user->paymentProviders()->pluck('id'));
 
         return Inertia::render('providers/index', [
             'providers' => $this->providersForDisplay($user, $accounts),
             'availableDrivers' => $drivers,
         ]);
-    }
-
-    /**
-     * Per-provider, per-currency money summary of successful transactions:
-     * inflow (collected), outflow (fees) and net.
-     *
-     * @return Collection<int, list<array{currency: string, count: int, inflow: float, outflow: float, net: float}>>
-     */
-    private function accountSummaries(Collection $providerIds): Collection
-    {
-        return Transaction::query()
-            ->whereIn('payment_provider_id', $providerIds)
-            ->where('status', TransactionStatus::SUCCESS->value)
-            ->selectRaw('payment_provider_id, currency')
-            ->selectRaw('count(*) as count')
-            ->selectRaw('coalesce(sum(amount), 0) as inflow')
-            ->selectRaw('coalesce(sum(coalesce(collection_fee, 0) + coalesce(settlement_fee, 0)), 0) as outflow')
-            ->selectRaw('coalesce(sum(coalesce(net_amount, amount)), 0) as net')
-            ->groupBy('payment_provider_id', 'currency')
-            ->orderByDesc('inflow')
-            ->get()
-            ->groupBy('payment_provider_id')
-            ->map(fn (Collection $rows): array => $rows->map(fn ($row): array => [
-                'currency' => (string) $row->currency,
-                'count' => (int) $row->count,
-                'inflow' => round((float) $row->inflow, 2),
-                'outflow' => round((float) $row->outflow, 2),
-                'net' => round((float) $row->net, 2),
-            ])->values()->all());
     }
 
     /**
@@ -157,14 +130,15 @@ class ProviderController extends Controller
 
         $rules = [
             'name' => 'required|string|unique:payment_providers,name',
-            'class' => 'required|string',
+            'class' => ['required', 'string', $this->availableDriverRule()],
             'supported_countries' => 'required|array|min:1',
             'supported_countries.*' => ['string', Rule::in($supported)],
             'is_active' => 'required|boolean',
             'logo_url' => 'nullable|string',
         ];
         foreach ($fields as $field) {
-            $rules['config.'.$field['key']] = 'required|'.($field['rules'] ?? 'string');
+            $presence = ($field['required'] ?? true) ? 'required|' : 'nullable|';
+            $rules['config.'.$field['key']] = $presence.($field['rules'] ?? 'string');
         }
 
         $validated = $request->validate($rules);
@@ -199,7 +173,7 @@ class ProviderController extends Controller
 
         $rules = [
             'name' => 'required|string|unique:payment_providers,name,'.$provider->id,
-            'class' => 'required|string',
+            'class' => ['required', 'string', $this->availableDriverRule()],
             'supported_countries' => 'required|array|min:1',
             'supported_countries.*' => ['string', Rule::in($supported)],
             'is_active' => 'required|boolean',
@@ -233,7 +207,22 @@ class ProviderController extends Controller
             'logo_url' => $validated['logo_url'] ?? null,
         ]);
 
+        // New credentials or settings: ask PayPal about its FX afresh.
+        app(PaypalFxRates::class)->forget($provider);
+
         return redirect()->route('providers.index');
+    }
+
+    /**
+     * Rejects sandbox-only drivers outside sandbox environments.
+     */
+    private function availableDriverRule(): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail): void {
+            if (is_string($value) && ! DriverRegistry::isAvailable($value)) {
+                $fail('This driver is only available in sandbox environments.');
+            }
+        };
     }
 
     /**
@@ -321,7 +310,7 @@ class ProviderController extends Controller
     /**
      * The credential fields a driver requires, defaulting to a single API key.
      *
-     * @return list<array{key: string, label: string, type: string}>
+     * @return list<array{key: string, label: string, type: string, options?: list<string>, rules?: string, required?: bool, help?: string}>
      */
     private function configFieldsFor(string $className): array
     {
@@ -330,6 +319,24 @@ class ProviderController extends Controller
         }
 
         return [['key' => 'api_key', 'label' => 'API Key / Token', 'type' => 'password']];
+    }
+
+    /**
+     * The currencies a driver can charge: its declared list, else its markets' currencies.
+     *
+     * @param  list<string>  $countries
+     * @return list<string>
+     */
+    private function supportedCurrenciesFor(string $className, array $countries): array
+    {
+        $currencies = defined($className.'::SUPPORTED_CURRENCIES')
+            ? $className::SUPPORTED_CURRENCIES
+            : array_filter(array_map(Market::currency(...), $countries));
+
+        $currencies = array_values(array_unique($currencies));
+        sort($currencies);
+
+        return $currencies;
     }
 
     /**
@@ -388,6 +395,10 @@ class ProviderController extends Controller
 
             $provider->setAttribute('config', $safe);
             $provider->setAttribute('accounts', $accounts[$provider->id] ?? []);
+            // Where PayPal should send this provider's webhooks, to paste into the PayPal app.
+            $provider->setAttribute('webhook_url', $provider->class === PaypalController::class
+                ? route('webhooks.paypal', $provider)
+                : null);
 
             return $provider;
         });

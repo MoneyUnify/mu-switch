@@ -1,0 +1,118 @@
+name: deploy
+
+# Every push to main is checked (lint, tests on SQLite and Postgres, Docker
+# build), then deployed to Render, and recorded as a GitHub deployment to
+# "production" with the live URL.
+#
+# Needs two repository secrets:
+#   RENDER_API_KEY     Render > Account Settings > API Keys
+#   RENDER_SERVICE_ID  the service's ID (srv-…), from its URL in the dashboard
+# and, on Render, Auto-Deploy set to Off, so this workflow is the only thing
+# that deploys. Optionally set the APP_URL repository variable.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  lint:
+    uses: ./.github/workflows/lint.yml
+
+  tests:
+    uses: ./.github/workflows/tests.yml
+
+  render:
+    name: Deploy to Render
+    needs: [lint, tests]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.APP_URL || 'https://mu-switch-paypal.onrender.com' }}
+    env:
+      RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+      RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+      APP_URL: ${{ vars.APP_URL || 'https://mu-switch-paypal.onrender.com' }}
+    steps:
+      - name: Check the Render secrets
+        run: |
+          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
+            echo "::error::Add the RENDER_API_KEY and RENDER_SERVICE_ID repository secrets (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+
+      - name: Deploy this commit
+        id: deploy
+        run: |
+          response=$(curl -sS --fail-with-body -X POST \
+            "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys" \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json" \
+            -d "{\"commitId\": \"${GITHUB_SHA}\"}")
+          deploy_id=$(echo "$response" | jq -r '.id // empty')
+
+          # 202 Queued (another deploy is running) has no body: find ours.
+          if [ -z "$deploy_id" ]; then
+            for attempt in $(seq 1 12); do
+              deploy_id=$(curl -sS --fail \
+                "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys?limit=10" \
+                -H "Authorization: Bearer ${RENDER_API_KEY}" \
+                -H "Accept: application/json" \
+                | jq -r --arg sha "$GITHUB_SHA" '[.[] | .deploy | select(.commit.id == $sha)][0].id // empty')
+              [ -n "$deploy_id" ] && break
+              sleep 10
+            done
+          fi
+
+          if [ -z "$deploy_id" ]; then
+            echo "::error::Render didn't return a deploy for ${GITHUB_SHA}."
+            exit 1
+          fi
+
+          echo "Render deploy ${deploy_id} started for ${GITHUB_SHA}"
+          echo "id=${deploy_id}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait until it's live
+        env:
+          DEPLOY_ID: ${{ steps.deploy.outputs.id }}
+        run: |
+          # Builds take about 10 minutes; give up after 40.
+          for attempt in $(seq 1 160); do
+            status=$(curl -sS --fail \
+              "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys/${DEPLOY_ID}" \
+              -H "Authorization: Bearer ${RENDER_API_KEY}" \
+              -H "Accept: application/json" | jq -r '.status')
+            echo "$(date -u +%H:%M:%S) ${status}"
+            case "$status" in
+              live) exit 0 ;;
+              created|queued|build_in_progress|update_in_progress|pre_deploy_in_progress) ;;
+              build_failed|update_failed|pre_deploy_failed|canceled|deactivated)
+                echo "::error::Render deploy ${DEPLOY_ID} ended as ${status}. See the service's logs on Render."
+                exit 1 ;;
+            esac
+            sleep 15
+          done
+          echo "::error::Render deploy ${DEPLOY_ID} didn't finish within 40 minutes."
+          exit 1
+
+      - name: Check the live site
+        run: |
+          # A free instance can take a minute to wake up.
+          for attempt in $(seq 1 12); do
+            if curl -sS --fail --max-time 60 "${APP_URL}/up" -H "Accept: application/json" | grep -q '"up"'; then
+              echo "${APP_URL} is up."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::${APP_URL}/up didn't answer after the deploy."
+          exit 1

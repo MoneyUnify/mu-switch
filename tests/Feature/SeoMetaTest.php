@@ -43,3 +43,19 @@ test('the static SEO files are present and well-formed', function () {
 
     expect(file_exists("{$publicPath}/og-image.png"))->toBeTrue();
 });
+
+test('the app and docs use the MoneyUnify favicons', function () {
+    foreach ([route('home'), '/docs'] as $page) {
+        $this->get($page)
+            ->assertOk()
+            ->assertSee('href="/favicon.ico"', false)
+            ->assertSee('href="/favicon-96x96.png"', false)
+            ->assertSee('href="/apple-touch-icon.png"', false)
+            ->assertDontSee('favicon.svg', false);
+    }
+
+    // Generated from the MoneyUnify icon, not the stock Laravel assets.
+    expect(getimagesize(public_path('favicon-96x96.png'))[0])->toBe(96)
+        ->and(getimagesize(public_path('apple-touch-icon.png'))[0])->toBe(180)
+        ->and(file_exists(public_path('favicon.svg')))->toBeFalse();
+});

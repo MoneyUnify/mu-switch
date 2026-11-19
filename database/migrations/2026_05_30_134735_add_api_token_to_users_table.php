@@ -13,7 +13,9 @@ return new class extends Migration
     {
         Schema::table('users', function (Blueprint $table) {
             if (! Schema::hasColumn('users', 'api_token')) {
-                $table->uuid('api_token')->nullable()->unique()->after('email');
+                // A string, not a uuid column: on Postgres a uuid column makes
+                // the lookup for any non-UUID bearer token fail with an error.
+                $table->string('api_token', 64)->nullable()->unique()->after('email');
             }
         });
     }

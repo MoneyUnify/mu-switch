@@ -1,0 +1,95 @@
+# Self-host MoneyUnify Switch in production on your own server with Docker:
+# the app (web, queue worker, scheduler), Postgres, and Caddy in front for
+# automatic HTTPS. Configure .env.production first (see .env.production.example),
+# then run:
+#
+#   docker compose --env-file .env.production -f compose.prod.yaml up -d --build
+#
+# Guide: prezet/content/docker-production.md
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - path: .env.production
+        required: true
+    environment:
+      # Fail fast instead of starting with a missing key or password.
+      APP_KEY: "${APP_KEY:?Set APP_KEY in .env.production}"
+      APP_URL: "${APP_URL:?Set APP_URL in .env.production}"
+      APP_ENV: production
+      APP_DEBUG: "false"
+      LOG_CHANNEL: stderr
+      DB_CONNECTION: pgsql
+      DB_URL: ""
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_DATABASE: moneyunify
+      DB_USERNAME: moneyunify
+      DB_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD in .env.production}"
+      SEED_DEMO_DATA: "false"
+      PHP_OPCACHE_ENABLE: "1"
+      PHP_OPCACHE_VALIDATE_TIMESTAMPS: "0"
+      REDIS_HOST: "${REDIS_HOST:-redis}"
+      REDIS_PORT: "${REDIS_PORT:-6379}"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+      REDIS_TCP_KEEPALIVE: "60"
+      REDIS_PERSISTENT: "true"
+    volumes:
+      - app-storage:/var/www/html/storage/app
+    # Reached only through Caddy; not published on the host.
+    expose:
+      - "10000"
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: moneyunify
+      POSTGRES_USER: moneyunify
+      POSTGRES_PASSWORD: "${DB_PASSWORD:?Set DB_PASSWORD in .env.production}"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moneyunify -d moneyunify"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--tcp-keepalive", "60", "--timeout", "0"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    # Gets and renews a Let's Encrypt certificate for APP_DOMAIN automatically.
+    command: caddy reverse-proxy --from "${APP_DOMAIN:?Set APP_DOMAIN in .env.production}" --to app:10000
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  app-storage:
+  db-data:
+  redis-data:
+  caddy-data:
+  caddy-config:

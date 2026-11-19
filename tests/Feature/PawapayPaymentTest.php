@@ -7,6 +7,7 @@ use App\Models\PaymentProvider;
 use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 function pawapayProvider(User $user): PaymentProvider
 {
@@ -19,10 +20,15 @@ function pawapayProvider(User $user): PaymentProvider
     ]);
 }
 
-function fakePawapayPredict(string $correspondent = 'MTN_MOMO_ZMB'): array
+/**
+ * pawaPay v2's predict-provider answer for a Zambian MTN number.
+ *
+ * @return array<string, mixed>
+ */
+function fakePawapayPredict(string $provider = 'MTN_MOMO_ZMB'): array
 {
-    return ['*/v1/predict-correspondent' => Http::response([
-        'country' => 'ZMB', 'operator' => 'MTN', 'correspondent' => $correspondent, 'msisdn' => '260763456789',
+    return ['*/v2/predict-provider' => Http::response([
+        'country' => 'ZMB', 'provider' => $provider, 'phoneNumber' => '260763456789',
     ], 200)];
 }
 
@@ -38,7 +44,7 @@ test('the pawapay driver predicts the operator and initiates a deposit', functio
 
     Http::fake([
         ...fakePawapayPredict(),
-        '*/deposits' => Http::response(['depositId' => 'x', 'status' => 'ACCEPTED', 'created' => '2026-01-01T00:00:00Z'], 200),
+        '*/v2/deposits' => Http::response(['depositId' => 'x', 'status' => 'ACCEPTED', 'created' => '2026-01-01T00:00:00Z'], 200),
     ]);
 
     $this->withToken('pp-user')
@@ -53,25 +59,26 @@ test('the pawapay driver predicts the operator and initiates a deposit', functio
         'status' => TransactionStatus::PENDING->value,
     ]);
 
-    // The predict call runs first, then the deposit carries the predicted
-    // correspondent, the E.164 msisdn, a UUID depositId and a Bearer token.
-    Http::assertSent(fn ($request) => str_contains($request->url(), '/v1/predict-correspondent')
-        && $request['msisdn'] === '260763456789');
-    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/deposits')
+    // The predict call runs first, then the v2 deposit carries the predicted
+    // provider and number as an MMO payer, a UUID depositId and a Bearer token.
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/v2/predict-provider')
+        && $request['phoneNumber'] === '260763456789');
+    Http::assertSent(fn ($request) => $request->url() === 'https://api.pawapay.io/v2/deposits'
         && $request->hasHeader('Authorization', 'Bearer pp-token')
-        && $request['correspondent'] === 'MTN_MOMO_ZMB'
+        && Str::isUuid($request['depositId'])
+        && $request['payer'] === ['type' => 'MMO', 'accountDetails' => ['phoneNumber' => '260763456789', 'provider' => 'MTN_MOMO_ZMB']]
         && $request['currency'] === 'ZMW'
         && $request['amount'] === '750'
-        && $request['payer']['type'] === 'MSISDN'
-        && $request['payer']['address']['value'] === '260763456789');
+        && $request['customerMessage'] === 'MoneyUnify'
+        && ! isset($request['correspondent'], $request['customerTimestamp'], $request['statementDescription']));
 });
 
-test('the pawapay driver honours a caller-supplied correspondent without predicting', function () {
+test('the pawapay driver honours a caller-supplied provider without predicting', function () {
     $user = User::factory()->create(['api_token' => 'pp-user-2']);
     pawapayProvider($user);
 
     Http::fake([
-        '*/deposits' => Http::response(['status' => 'ACCEPTED'], 200),
+        '*/v2/deposits' => Http::response(['status' => 'ACCEPTED'], 200),
     ]);
 
     $this->withToken('pp-user-2')
@@ -83,9 +90,9 @@ test('the pawapay driver honours a caller-supplied correspondent without predict
         ])
         ->assertOk();
 
-    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/predict-correspondent'));
-    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/deposits')
-        && $request['correspondent'] === 'AIRTEL_OAPI_ZMB');
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/predict-provider'));
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/v2/deposits')
+        && $request['payer']['accountDetails'] === ['phoneNumber' => '260977123456', 'provider' => 'AIRTEL_OAPI_ZMB']);
 });
 
 test('the pawapay driver errors when the operator cannot be determined', function () {
@@ -93,7 +100,7 @@ test('the pawapay driver errors when the operator cannot be determined', functio
     pawapayProvider($user);
 
     Http::fake([
-        '*/v1/predict-correspondent' => Http::response(['message' => 'unknown'], 422),
+        '*/v2/predict-provider' => Http::response(['failureReason' => ['failureCode' => 'INVALID_PARAMETER', 'failureMessage' => 'Invalid phone number']], 400),
     ]);
 
     $this->withToken('pp-user-3')
@@ -102,15 +109,47 @@ test('the pawapay driver errors when the operator cannot be determined', functio
         ->assertJsonPath('status', 'error');
 });
 
+test('a rejected pawapay token is reported as such, not as an unknown number', function () {
+    $user = User::factory()->create(['api_token' => 'pp-user-auth']);
+    pawapayProvider($user)->update(['config' => ['api_token' => 'expired-token', 'environment' => 'sandbox', 'supported_countries' => ['ZM']]]);
+
+    Http::fake([
+        '*/v2/predict-provider' => Http::response(['failureReason' => ['failureCode' => 'AUTHENTICATION_ERROR', 'failureMessage' => 'The API token in the request is invalid.']], 401),
+    ]);
+
+    $this->withToken('pp-user-auth')
+        ->postJson('/api/v1/payment/request', ['amount' => 12, 'account_number' => '0971943638', 'country' => 'ZM'])
+        ->assertStatus(502)
+        ->assertJsonPath('message', 'pawaPay rejected the API token (The API token in the request is invalid.). Check the token on the Providers page: it must be a sandbox token for the sandbox environment.');
+
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), '/v2/deposits'));
+});
+
+test('a pasted pawapay token is sent without surrounding spaces, line breaks or quotes', function () {
+    $user = User::factory()->create(['api_token' => 'pp-user-paste']);
+    pawapayProvider($user)->update(['config' => ['api_token' => " \"pp-token\"\n", 'supported_countries' => ['ZM']]]);
+
+    Http::fake([
+        ...fakePawapayPredict(),
+        '*/v2/deposits' => Http::response(['depositId' => 'x', 'status' => 'ACCEPTED']),
+    ]);
+
+    $this->withToken('pp-user-paste')
+        ->postJson('/api/v1/payment/request', ['amount' => 100, 'account_number' => '0763456789', 'country' => 'ZM'])
+        ->assertOk();
+
+    Http::assertSent(fn ($request) => $request->hasHeader('Authorization', 'Bearer pp-token'));
+});
+
 test('the pawapay driver surfaces a rejected deposit as an error', function () {
     $user = User::factory()->create(['api_token' => 'pp-user-4']);
     pawapayProvider($user);
 
     Http::fake([
         ...fakePawapayPredict(),
-        '*/deposits' => Http::response([
+        '*/v2/deposits' => Http::response([
             'status' => 'REJECTED',
-            'rejectionReason' => ['rejectionCode' => 'INVALID_AMOUNT', 'rejectionMessage' => 'Amount is invalid'],
+            'failureReason' => ['failureCode' => 'INVALID_AMOUNT', 'failureMessage' => 'Amount is invalid'],
         ], 200),
     ]);
 
@@ -146,10 +185,10 @@ test('the pawapay driver maps a COMPLETED deposit to success on verification', f
     $transaction = pendingPawapayTransaction($user);
 
     Http::fake([
-        '*/deposits/*' => Http::response([[
+        '*/v2/deposits/*' => Http::response(['status' => 'FOUND', 'data' => [
             'depositId' => $transaction->transaction_id,
             'status' => 'COMPLETED',
-            'depositedAmount' => '750.00',
+            'amount' => '750.00',
             'currency' => 'ZMW',
         ]], 200),
     ]);
@@ -168,7 +207,7 @@ test('the pawapay driver maps a FAILED deposit to failed on verification', funct
     $transaction = pendingPawapayTransaction($user);
 
     Http::fake([
-        '*/deposits/*' => Http::response([[
+        '*/v2/deposits/*' => Http::response(['status' => 'FOUND', 'data' => [
             'depositId' => $transaction->transaction_id,
             'status' => 'FAILED',
             'failureReason' => ['failureCode' => 'PAYMENT_NOT_APPROVED', 'failureMessage' => 'Payment not approved'],
@@ -181,4 +220,31 @@ test('the pawapay driver maps a FAILED deposit to failed on verification', funct
         ->assertJsonPath('status', 'failed');
 
     expect($transaction->refresh()->status)->toBe(TransactionStatus::FAILED);
+});
+
+test('a deposit pawapay hasn\'t found yet stays pending', function () {
+    $user = User::factory()->create(['api_token' => 'pp-verify-3']);
+    $transaction = pendingPawapayTransaction($user);
+
+    Http::fake(['*/v2/deposits/*' => Http::response(['status' => 'NOT_FOUND'], 200)]);
+
+    $this->withToken('pp-verify-3')
+        ->postJson('/api/v1/payment/verify', ['transaction_id' => $transaction->transaction_id])
+        ->assertOk();
+
+    expect($transaction->refresh()->status)->toBe(TransactionStatus::PENDING);
+});
+
+test('the customer message keeps to pawapay\'s 4 to 22 letters, digits and spaces', function () {
+    $user = User::factory()->create(['api_token' => 'pp-message']);
+    pawapayProvider($user);
+    Http::fake([...fakePawapayPredict(), '*/v2/deposits' => Http::response(['status' => 'ACCEPTED'], 200)]);
+
+    $this->withToken('pp-message')->postJson('/api/v1/payment/request', [
+        'amount' => 10, 'account_number' => '0763456789', 'country' => 'ZM', 'narration' => 'Order #42 — basket & mat, thank you!',
+    ]);
+
+    Http::assertSent(fn ($request) => str_ends_with($request->url(), '/v2/deposits')
+        && $request['customerMessage'] === 'Order 42 basket mat th'
+        && preg_match('/^[a-zA-Z0-9 ]{4,22}$/', $request['customerMessage']) === 1);
 });

@@ -3,6 +3,10 @@
 namespace App\Http\Middleware;
 
 use App\Models\ApiLog;
+use App\Models\CrossBorderTransfer;
+use App\Models\Merchant;
+use App\Models\PaymentProvider;
+use App\Models\Transaction;
 use App\Support\RequestContext;
 use Closure;
 use Illuminate\Contracts\Debug\ExceptionHandler;
@@ -94,7 +98,7 @@ class LogApiRequests
         try {
             ApiLog::create([
                 ...$snapshot,
-                'user_id' => $request->user()?->id,
+                'user_id' => $this->resolveUserId($request),
                 'route' => $request->route()?->getName() ?? optional($request->route())->uri(),
                 'response_status' => $response->getStatusCode(),
                 'response_body' => $this->responseBody($response),
@@ -109,6 +113,60 @@ class LogApiRequests
                 'path' => $snapshot['url'] ?? null,
             ]);
         }
+    }
+
+    /**
+     * Resolve the user id for this request, falling back to route models when unauthenticated.
+     */
+    private function resolveUserId(Request $request): ?int
+    {
+        if ($user = $request->user()) {
+            return $user->id;
+        }
+
+        $transaction = $request->route('transaction');
+        if ($transaction instanceof Transaction) {
+            return $transaction->paymentProvider?->user_id;
+        }
+        if (is_string($transaction) && $transaction !== '') {
+            $providerId = Transaction::where('transaction_id', $transaction)->value('payment_provider_id');
+            if ($providerId) {
+                $id = PaymentProvider::where('id', $providerId)->value('user_id');
+                if ($id) {
+                    return (int) $id;
+                }
+            }
+        }
+
+        $transfer = $request->route('transfer');
+        if ($transfer instanceof CrossBorderTransfer) {
+            return $transfer->user_id;
+        }
+        if (is_string($transfer) && $transfer !== '') {
+            $id = CrossBorderTransfer::where('reference', $transfer)->value('user_id');
+            if ($id) {
+                return (int) $id;
+            }
+        }
+
+        // A merchant's public pay page belongs to the merchant's aggregator.
+        $merchant = $request->route('merchant');
+        if ($merchant instanceof Merchant) {
+            return $merchant->user_id;
+        }
+
+        $provider = $request->route('provider');
+        if ($provider instanceof PaymentProvider) {
+            return $provider->user_id;
+        }
+        if (is_numeric($provider)) {
+            $id = PaymentProvider::where('id', $provider)->value('user_id');
+            if ($id) {
+                return (int) $id;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -157,6 +215,14 @@ class LogApiRequests
         $content = $response->getContent();
 
         if ($content === false || $content === '') {
+            if ($response->headers->has('X-Inertia-Location')) {
+                return (string) json_encode(['location' => $response->headers->get('X-Inertia-Location')]);
+            }
+
+            if ($response->headers->has('Location')) {
+                return (string) json_encode(['redirect' => $response->headers->get('Location')]);
+            }
+
             return null;
         }
 

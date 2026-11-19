@@ -10,6 +10,11 @@ endpoint, and the switch handles the rest.** You never call individual providers
 directly — the switch selects them, tries them in order, and falls back
 automatically.
 
+> **OpenAPI spec and Postman.** Every endpoint in this reference is also
+> described in an OpenAPI 3.1 spec, served at [`/openapi.yaml`](/openapi.yaml).
+> To try them straight away, [download the Postman collection](/postman-collection.json)
+> (see [Postman Collection](/docs/api/postman)).
+
 ## The single entry point
 
 All payment collection goes through one endpoint:

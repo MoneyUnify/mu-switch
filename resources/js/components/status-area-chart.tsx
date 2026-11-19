@@ -1,4 +1,13 @@
-import { Area, AreaChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+    Area,
+    AreaChart,
+    CartesianGrid,
+    Legend,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis,
+} from 'recharts';
 
 export interface StatusPoint {
     label: string;
@@ -18,19 +27,62 @@ const SERIES = [
 export function StatusAreaChart({ points }: { points: StatusPoint[] }) {
     return (
         <ResponsiveContainer width="100%" height={240}>
-            <AreaChart data={points} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
+            <AreaChart
+                data={points}
+                margin={{ top: 8, right: 8, bottom: 0, left: -16 }}
+            >
                 <defs>
                     {SERIES.map((s) => (
-                        <linearGradient key={s.key} id={`grad-${s.key}`} x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor={s.color} stopOpacity={0.25} />
-                            <stop offset="100%" stopColor={s.color} stopOpacity={0.02} />
+                        <linearGradient
+                            key={s.key}
+                            id={`grad-${s.key}`}
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                        >
+                            <stop
+                                offset="0%"
+                                stopColor={s.color}
+                                stopOpacity={0.25}
+                            />
+                            <stop
+                                offset="100%"
+                                stopColor={s.color}
+                                stopOpacity={0.02}
+                            />
                         </linearGradient>
                     ))}
                 </defs>
 
-                <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.08} vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 11, fill: 'currentColor', fillOpacity: 0.45 }} tickLine={false} axisLine={false} minTickGap={24} />
-                <YAxis allowDecimals={false} width={36} tick={{ fontSize: 11, fill: 'currentColor', fillOpacity: 0.45 }} tickLine={false} axisLine={false} />
+                <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="currentColor"
+                    strokeOpacity={0.08}
+                    vertical={false}
+                />
+                <XAxis
+                    dataKey="label"
+                    tick={{
+                        fontSize: 11,
+                        fill: 'currentColor',
+                        fillOpacity: 0.45,
+                    }}
+                    tickLine={false}
+                    axisLine={false}
+                    minTickGap={24}
+                />
+                <YAxis
+                    allowDecimals={false}
+                    width={36}
+                    tick={{
+                        fontSize: 11,
+                        fill: 'currentColor',
+                        fillOpacity: 0.45,
+                    }}
+                    tickLine={false}
+                    axisLine={false}
+                />
                 <Tooltip
                     contentStyle={{
                         fontSize: 12,

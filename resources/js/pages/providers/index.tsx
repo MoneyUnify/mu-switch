@@ -1,4 +1,5 @@
 import { Head, Link, useForm } from '@inertiajs/react';
+import { AlertDialog, Button, Flex, HoverCard } from '@radix-ui/themes';
 import {
     Plus,
     Settings,
@@ -14,10 +15,11 @@ import {
     ArrowDownLeft,
     ArrowUpRight,
     Search,
+    Copy,
 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { AlertDialog, Button, Flex, HoverCard } from '@radix-ui/themes';
+import { Badge } from '@/components/ui/badge';
 import {
     Card,
     CardContent,
@@ -26,8 +28,6 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
     Dialog,
@@ -37,9 +37,11 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { Badge } from '@/components/ui/badge';
-import providersRoute from '@/routes/providers';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { copyText } from '@/lib/clipboard';
 import { cn } from '@/lib/utils';
+import providersRoute from '@/routes/providers';
 
 interface AccountSummary {
     currency: string;
@@ -47,6 +49,7 @@ interface AccountSummary {
     inflow: number;
     outflow: number;
     net: number;
+    estimated: boolean;
 }
 
 interface PaymentProvider {
@@ -60,7 +63,18 @@ interface PaymentProvider {
     logo_url: string | null;
     is_active: boolean;
     accounts: AccountSummary[];
+    /** PayPal providers only: where PayPal should send this provider's webhooks. */
+    webhook_url?: string | null;
 }
+
+/** The PayPal events MoneyUnify handles, to tick when adding the webhook in PayPal. */
+const PAYPAL_WEBHOOK_EVENTS = [
+    'CHECKOUT.ORDER.APPROVED',
+    'PAYMENT.CAPTURE.COMPLETED',
+    'PAYMENT.CAPTURE.DENIED',
+    'PAYMENT.CAPTURE.REFUNDED',
+    'PAYMENT.CAPTURE.REVERSED',
+];
 
 function formatMoney(amount: number, currency: string): string {
     try {
@@ -79,6 +93,8 @@ interface ConfigField {
     label: string;
     type: string;
     options?: string[];
+    required?: boolean;
+    help?: string;
 }
 
 interface MarketOption {
@@ -112,6 +128,8 @@ interface AvailableDriver {
     name: string;
     class: string;
     supported_country_options: MarketOption[];
+    supported_currencies: string[];
+    capabilities: string[];
     default_countries: string[];
     default_logo: string | null;
     config_fields: ConfigField[];
@@ -244,6 +262,7 @@ export default function Index({
         const driverOptions =
             availableDrivers.find((d) => d.class === provider.class)
                 ?.supported_country_options ?? [];
+
         return codes.map(
             (code) => driverOptions.find((o) => o.code === code)?.name ?? code,
         );
@@ -266,6 +285,54 @@ export default function Index({
     const unusedDrivers = availableDrivers.filter(
         (d) => !addedClasses.has(d.class),
     );
+
+    // Driver picker filters: free text plus the market and currency a driver serves.
+    const [driverSearch, setDriverSearch] = useState('');
+    const [driverCountry, setDriverCountry] = useState('');
+    const [driverCurrency, setDriverCurrency] = useState('');
+    const driverQuery = driverSearch.trim().toLowerCase();
+    const resetDriverFilters = () => {
+        setDriverSearch('');
+        setDriverCountry('');
+        setDriverCurrency('');
+    };
+    const driverCountryOptions = [
+        ...new Map(
+            unusedDrivers
+                .flatMap((d) => d.supported_country_options)
+                .map((m) => [m.code, m] as const),
+        ).values(),
+    ].sort((a, b) => a.name.localeCompare(b.name));
+    const driverCurrencyOptions = [
+        ...new Set(unusedDrivers.flatMap((d) => d.supported_currencies)),
+    ].sort();
+    const filteredDrivers = unusedDrivers.filter((d) => {
+        const markets = d.supported_country_options;
+
+        if (driverCountry && !markets.some((m) => m.code === driverCountry)) {
+            return false;
+        }
+
+        if (
+            driverCurrency &&
+            !d.supported_currencies.includes(driverCurrency)
+        ) {
+            return false;
+        }
+
+        return (
+            !driverQuery ||
+            [
+                d.name,
+                d.class.split('\\').pop() ?? '',
+                ...markets.flatMap((m) => [m.name, m.code]),
+                ...d.supported_currencies,
+            ]
+                .join(' ')
+                .toLowerCase()
+                .includes(driverQuery)
+        );
+    });
 
     // Per-market integration dialog state: the market being configured plus a
     // local draft of its values (only committed to the form on Save).
@@ -293,7 +360,10 @@ export default function Index({
     };
 
     const saveExtraMarket = () => {
-        if (!extraMarket) return;
+        if (!extraMarket) {
+            return;
+        }
+
         setData('market_extra_values', {
             ...data.market_extra_values,
             [extraMarket.code]: extraDraft,
@@ -312,6 +382,7 @@ export default function Index({
                 ),
             );
         }
+
         setExtraMarket(null);
     };
 
@@ -350,7 +421,7 @@ export default function Index({
                     id={`${idPrefix}-${field.key}`}
                     value={data.config[field.key] || ''}
                     onChange={(e) => setConfigField(field.key, e.target.value)}
-                    required={required}
+                    required={required && field.required !== false}
                     className="flex h-9 w-full rounded-full border border-input bg-transparent px-3.5 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 >
                     {field.options.map((opt) => (
@@ -366,8 +437,13 @@ export default function Index({
                     value={data.config[field.key] || ''}
                     onChange={(e) => setConfigField(field.key, e.target.value)}
                     placeholder={field.type === 'password' ? '••••••••' : ''}
-                    required={required}
+                    required={required && field.required !== false}
                 />
+            )}
+            {field.help && (
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {field.help}
+                </p>
             )}
             {fieldErrors[`config.${field.key}`] && (
                 <p className="text-xs text-red-500">
@@ -392,11 +468,12 @@ export default function Index({
                     This driver has no configurable markets.
                 </p>
             ) : (
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
                     {options.map((market) => {
                         const checked = data.supported_countries.includes(
                             market.code,
                         );
+
                         return (
                             <div key={market.code} className="space-y-1">
                                 <label
@@ -412,6 +489,7 @@ export default function Index({
                                         onCheckedChange={() => {
                                             const willCheck = !checked;
                                             toggleCountry(market.code);
+
                                             // Markets needing extra integration
                                             // details open the dialog on tick.
                                             if (
@@ -582,7 +660,10 @@ export default function Index({
 
     const handleUpdate = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!editingProvider) return;
+
+        if (!editingProvider) {
+            return;
+        }
 
         put(providersRoute.update.url(editingProvider.id), {
             onSuccess: () => {
@@ -753,7 +834,7 @@ export default function Index({
                                         <div>
                                             <div className="flex items-center gap-1 text-[11px] text-neutral-400">
                                                 <ArrowUpRight className="h-3 w-3 text-red-500" />{' '}
-                                                Outflows (fees)
+                                                Outflows (fees & payouts)
                                             </div>
                                             <div className="text-sm font-semibold tabular-nums">
                                                 {provider.accounts.length > 0
@@ -858,15 +939,19 @@ export default function Index({
                 open={isCreateOpen}
                 onOpenChange={(open) => {
                     setIsCreateOpen(open);
-                    if (!open) setSelectedDriver(null);
+
+                    if (!open) {
+                        setSelectedDriver(null);
+                        resetDriverFilters();
+                    }
                 }}
             >
                 <DialogContent
                     className={cn(
                         'flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden',
                         selectedDriver === null
-                            ? 'sm:max-w-[500px]'
-                            : 'sm:max-w-[450px]',
+                            ? 'sm:max-w-4xl'
+                            : 'sm:max-w-2xl',
                     )}
                 >
                     <DialogHeader className="shrink-0">
@@ -884,8 +969,64 @@ export default function Index({
 
                     {selectedDriver === null ? (
                         <div className="flex min-h-0 flex-1 flex-col gap-4 py-2">
-                            <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
-                                {unusedDrivers.map((driver) => (
+                            {unusedDrivers.length > 0 && (
+                                <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                                    <div className="relative flex-1">
+                                        <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                                        <Input
+                                            type="search"
+                                            value={driverSearch}
+                                            onChange={(e) =>
+                                                setDriverSearch(e.target.value)
+                                            }
+                                            placeholder="Search by name, country or currency..."
+                                            aria-label="Search drivers"
+                                            className="pl-9"
+                                        />
+                                    </div>
+                                    <select
+                                        value={driverCountry}
+                                        onChange={(e) =>
+                                            setDriverCountry(e.target.value)
+                                        }
+                                        aria-label="Filter by country"
+                                        className="flex h-9 w-full rounded-full border border-input bg-transparent px-3.5 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:w-48"
+                                    >
+                                        <option value="">All countries</option>
+                                        {driverCountryOptions.map((market) => (
+                                            <option
+                                                key={market.code}
+                                                value={market.code}
+                                            >
+                                                {market.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <select
+                                        value={driverCurrency}
+                                        onChange={(e) =>
+                                            setDriverCurrency(e.target.value)
+                                        }
+                                        aria-label="Filter by currency"
+                                        className="flex h-9 w-full rounded-full border border-input bg-transparent px-3.5 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:w-40"
+                                    >
+                                        <option value="">All currencies</option>
+                                        {driverCurrencyOptions.map(
+                                            (currency) => (
+                                                <option
+                                                    key={currency}
+                                                    value={currency}
+                                                >
+                                                    {currency}
+                                                </option>
+                                            ),
+                                        )}
+                                    </select>
+                                </div>
+                            )}
+
+                            <div className="grid min-h-0 flex-1 auto-rows-max grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
+                                {filteredDrivers.map((driver) => (
                                     <div
                                         key={driver.class}
                                         onClick={() => {
@@ -930,6 +1071,13 @@ export default function Index({
                                                     <FileCode className="h-4 w-4 text-neutral-500" />
                                                 )}
                                                 {driver.name}
+                                                {driver.capabilities.includes(
+                                                    'payouts',
+                                                ) && (
+                                                    <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                                                        Payouts
+                                                    </span>
+                                                )}
                                             </div>
                                             <div
                                                 className="max-w-[200px] truncate font-mono text-xs text-neutral-500 dark:text-neutral-400"
@@ -957,6 +1105,21 @@ export default function Index({
                                             : 'All available drivers have already been added.'}
                                     </div>
                                 )}
+
+                                {unusedDrivers.length > 0 &&
+                                    filteredDrivers.length === 0 && (
+                                        <div className="col-span-full py-8 text-center text-sm text-neutral-500">
+                                            <Search className="mx-auto mb-3 h-8 w-8 text-neutral-400" />
+                                            No drivers match your filters.{' '}
+                                            <button
+                                                type="button"
+                                                onClick={resetDriverFilters}
+                                                className="cursor-pointer font-medium text-primary underline underline-offset-4"
+                                            >
+                                                Clear filters
+                                            </button>
+                                        </div>
+                                    )}
                             </div>
 
                             <DialogFooter className="shrink-0 border-t border-neutral-100 pt-4 dark:border-neutral-900">
@@ -1125,7 +1288,7 @@ export default function Index({
                 open={!!editingProvider}
                 onOpenChange={(open) => !open && setEditingProvider(null)}
             >
-                <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden">
+                <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-2xl">
                     <DialogHeader className="shrink-0">
                         <DialogTitle>Edit Payment Provider</DialogTitle>
                         <DialogDescription>
@@ -1171,6 +1334,58 @@ export default function Index({
                                     </p>
                                 )}
                             </div>
+
+                            {editingProvider?.webhook_url && (
+                                <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                                    <Label htmlFor="edit-webhook-url">
+                                        Webhook URL
+                                    </Label>
+                                    <div className="flex gap-2">
+                                        <Input
+                                            id="edit-webhook-url"
+                                            value={editingProvider.webhook_url}
+                                            readOnly
+                                            onFocus={(e) => e.target.select()}
+                                            className="font-mono text-xs"
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="soft"
+                                            onClick={() =>
+                                                copyText(
+                                                    editingProvider.webhook_url ??
+                                                        '',
+                                                    'Webhook URL',
+                                                )
+                                            }
+                                            className="shrink-0 cursor-pointer"
+                                        >
+                                            <Copy
+                                                className="h-3.5 w-3.5"
+                                                aria-hidden
+                                            />
+                                            Copy
+                                        </Button>
+                                    </div>
+                                    <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                                        In your PayPal app, choose{' '}
+                                        <strong>Add Webhook</strong>, paste this
+                                        URL and tick these events, then paste
+                                        the new webhook&apos;s ID into{' '}
+                                        <strong>Webhook ID</strong> below:
+                                    </p>
+                                    <ul className="flex flex-wrap gap-1.5">
+                                        {PAYPAL_WEBHOOK_EVENTS.map((event) => (
+                                            <li
+                                                key={event}
+                                                className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px] text-neutral-700 dark:bg-white/10 dark:text-neutral-200"
+                                            >
+                                                {event}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
 
                             {(editDriver?.config_fields?.length
                                 ? editDriver.config_fields
@@ -1317,8 +1532,8 @@ export default function Index({
                             {accountsProvider?.name} · Accounts
                         </DialogTitle>
                         <DialogDescription>
-                            Total successfully transacted amounts, grouped by
-                            currency.
+                            Your balance at this provider by currency, from the
+                            ledger: payments in, fees and payouts out.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -1359,7 +1574,7 @@ export default function Index({
                                         <div className="flex items-center justify-between">
                                             <span className="flex items-center gap-1 text-neutral-500 dark:text-neutral-400">
                                                 <ArrowUpRight className="h-3 w-3 text-red-500" />{' '}
-                                                Outflows (fees)
+                                                Outflows (fees & payouts)
                                             </span>
                                             <span className="font-medium tabular-nums">
                                                 {formatMoney(
@@ -1371,6 +1586,14 @@ export default function Index({
                                         <div className="flex items-center justify-between border-t border-sidebar-border/50 pt-1.5 dark:border-sidebar-border/70">
                                             <span className="font-medium text-neutral-700 dark:text-neutral-300">
                                                 Net
+                                                {account.estimated && (
+                                                    <span
+                                                        className="ml-1.5 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                                                        title="Includes fees estimated from the provider’s published schedule"
+                                                    >
+                                                        Est.
+                                                    </span>
+                                                )}
                                             </span>
                                             <span className="font-semibold tabular-nums">
                                                 {formatMoney(
@@ -1394,7 +1617,9 @@ export default function Index({
             <Dialog
                 open={!!extraMarket}
                 onOpenChange={(open) => {
-                    if (!open) cancelExtraMarket();
+                    if (!open) {
+                        cancelExtraMarket();
+                    }
                 }}
             >
                 <DialogContent className="sm:max-w-md">

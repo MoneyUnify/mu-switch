@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ApiLog;
 use App\Models\ProviderLog;
+use App\Support\SqlDate;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -140,25 +141,35 @@ class ApiLogController extends Controller
         $like = '%'.$search.'%';
 
         match ($field) {
-            'path' => $query->where('url', 'like', $like),
-            'ip' => $query->where('ip_address', 'like', $like),
+            'path' => $query->whereLike('url', $like),
+            'ip' => $query->whereLike('ip_address', $like),
             'method' => $query->where('method', strtoupper($search)),
             'status' => $query->where('response_status', (int) $search),
             'payload' => $query->where(fn (Builder $q) => $q
-                ->where('request_body', 'like', $like)
-                ->orWhere('request_headers', 'like', $like)
-                ->orWhere('response_body', 'like', $like)),
+                ->whereLike('request_body', $like)
+                ->orWhereLike('request_headers', $like)
+                ->orWhereLike('response_body', $like)
+                ->orWhereHas('providerCalls', fn (Builder $pq) => $pq
+                    ->whereLike('url', $like)
+                    ->orWhereLike('request_body', $like)
+                    ->orWhereLike('response_body', $like)
+                    ->orWhereLike('error_message', $like))),
             'exception' => $query->where(fn (Builder $q) => $q
-                ->where('exception_class', 'like', $like)
-                ->orWhere('exception_message', 'like', $like)),
+                ->whereLike('exception_class', $like)
+                ->orWhereLike('exception_message', $like)),
             default => $query->where(fn (Builder $q) => $q
-                ->where('url', 'like', $like)
-                ->orWhere('ip_address', 'like', $like)
-                ->orWhere('method', 'like', $like)
-                ->orWhere('exception_message', 'like', $like)
-                ->orWhere('request_body', 'like', $like)
-                ->orWhere('request_headers', 'like', $like)
-                ->orWhere('response_body', 'like', $like)
+                ->whereLike('url', $like)
+                ->orWhereLike('ip_address', $like)
+                ->orWhereLike('method', $like)
+                ->orWhereLike('exception_message', $like)
+                ->orWhereLike('request_body', $like)
+                ->orWhereLike('request_headers', $like)
+                ->orWhereLike('response_body', $like)
+                ->orWhereHas('providerCalls', fn (Builder $pq) => $pq
+                    ->whereLike('url', $like)
+                    ->orWhereLike('request_body', $like)
+                    ->orWhereLike('response_body', $like)
+                    ->orWhereLike('error_message', $like))
                 ->when(is_numeric($search), fn (Builder $q2) => $q2->orWhere('response_status', (int) $search))),
         };
     }
@@ -246,9 +257,7 @@ class ApiLogController extends Controller
      */
     private function chartSeries(Builder $query, Carbon $from, Carbon $to, string $grain): array
     {
-        $bucketExpr = $grain === 'hour'
-            ? "strftime('%Y-%m-%d %H:00:00', created_at)"
-            : "strftime('%Y-%m-%d', created_at)";
+        $bucketExpr = SqlDate::bucket($query, 'created_at', $grain === 'hour' ? 'hour' : 'day');
 
         $rows = $query
             ->selectRaw("{$bucketExpr} as bucket")

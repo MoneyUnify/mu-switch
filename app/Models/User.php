@@ -37,6 +37,19 @@ class User extends Authenticatable implements PasskeyUser
         return $this->hasMany(PaymentProvider::class);
     }
 
+    public function crossBorderTransfers(): HasMany
+    {
+        return $this->hasMany(CrossBorderTransfer::class);
+    }
+
+    /**
+     * The account's AI providers, in failover order.
+     */
+    public function aiCredentials(): HasMany
+    {
+        return $this->hasMany(AiCredential::class)->orderBy('priority')->orderBy('id');
+    }
+
     /**
      * The account's active fee policy, defaulting to "transparent".
      */
@@ -86,5 +99,10 @@ class User extends Authenticatable implements PasskeyUser
             'password' => 'hashed',
             'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    public function merchants(): HasMany
+    {
+        return $this->hasMany(Merchant::class);
     }
 }

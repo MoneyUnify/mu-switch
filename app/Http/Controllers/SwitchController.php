@@ -4,15 +4,18 @@ namespace App\Http\Controllers;
 
 use App\ApiResponse;
 use App\Contracts\PaymentProviderInterface;
-use App\Jobs\SendTransactionCallback;
-use App\Models\PaymentProvider;
+use App\Exceptions\NoEligibleProviderException;
 use App\Models\Transaction;
+use App\Support\Currency;
+use App\Support\Fees\FeeCalculator;
+use App\Support\Fees\PaymentQuoter;
+use App\Support\Fees\ProviderQuote;
 use App\Support\Market;
 use App\Support\ProviderCallContext;
-use App\Support\ProviderFees;
+use App\Support\ProviderRouter;
+use App\Support\TransactionVerifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 
 class SwitchController extends Controller
@@ -27,47 +30,22 @@ class SwitchController extends Controller
             'email' => 'nullable|email',
             // Optional: where we POST the final (successful/failed) result.
             'callback_url' => 'nullable|url',
+            // Optional: charge in this currency instead of the country's own (e.g. USD via PayPal).
+            'currency' => 'nullable|string|size:3|alpha',
+            // Optional: where hosted checkouts (e.g. PayPal) send the payer back to.
+            'return_url' => 'nullable|url',
+            // Optional: allow routing to providers that convert currency via FX (e.g. PayPal for African currencies).
+            'allow_fx' => 'nullable|boolean',
+            'fx_quote_id' => 'nullable|string',
         ]);
-        $user = $request->user();
-        $providers = $user ? $user->paymentProviders : collect();
+        $country = strtoupper($request['country']);
+        $currency = Currency::resolve($request->input('currency'), $country);
+        $allowFx = (bool) $request->boolean('allow_fx') || $request->filled('fx_quote_id');
 
-        // Guard Clause: Check if providers exist early to avoid nesting
-        if ($providers->isEmpty()) {
-            return ApiResponse::error('Providers not configured yet. Please configure at least 1 (one) provider', 400);
-        }
-
-        // 1. Filter active providers that support the requested country based on their config
-        $filteredProviders = $providers->filter(function ($provider) use ($request) {
-            if (! $provider->is_active) {
-                return false;
-            }
-
-            $config = is_string($provider->config) ? json_decode($provider->config, true) : $provider->config;
-
-            if (isset($config['supported_countries'])) {
-                $supportedCountries = is_array($config['supported_countries'])
-                    ? $config['supported_countries']
-                    : array_map('trim', explode(',', $config['supported_countries']));
-
-                $supportedCountries = array_map('strtoupper', $supportedCountries);
-                if (! in_array(strtoupper($request['country']), $supportedCountries)) {
-                    return false;
-                }
-            }
-
-            return true;
-        });
-
-        if ($filteredProviders->isEmpty()) {
-            return ApiResponse::error('No active providers support the requested country', 400);
-        }
-
-        // Under the "cost aware" policy, try the cheapest provider first (by the
-        // total fee it would charge for this amount) so fallback — and any fee
-        // difference — becomes the exception. Providers without a known fee
-        // schedule keep their original order after the priced ones.
-        if ($user && $user->feePolicy() === 'cost_aware') {
-            $filteredProviders = $this->orderByCost($filteredProviders, (float) $request['amount']);
+        try {
+            $filteredProviders = ProviderRouter::route($request->user(), $country, $currency, (float) $request['amount'], allowFx: $allowFx);
+        } catch (NoEligibleProviderException $e) {
+            return ApiResponse::error($e->getMessage(), 400);
         }
 
         // 2. Iterate through filtered providers sequentially, falling back to the
@@ -139,28 +117,43 @@ class SwitchController extends Controller
     }
 
     /**
-     * Order providers by the total fee they would charge for the amount
-     * (cheapest first). Providers without a fee schedule sort last but keep
-     * their relative order, so pricing never silently drops a usable provider.
-     *
-     * @param  Collection<int, PaymentProvider>  $providers
-     * @return Collection<int, PaymentProvider>
+     * Quote a payment's fees for every provider that would take it, before
+     * charging anyone. Each quote shows both sides: the merchant absorbing the
+     * fees, and the payer being charged extra to cover them.
      */
-    private function orderByCost(Collection $providers, float $amount): Collection
+    public function quotePayment(Request $request, PaymentQuoter $quoter): JsonResponse
     {
-        return $providers
-            ->values()
-            ->map(function ($provider, int $index) use ($amount): array {
-                $schedule = ProviderFees::scheduleFor($provider);
-                $cost = $schedule === null
-                    ? INF
-                    : ProviderFees::collectionFee($schedule, $amount) + ProviderFees::settlementFee($schedule, $amount);
+        $request->validate([
+            'amount' => 'required|numeric|min:0.01',
+            'country' => ['required', 'string', 'size:2', Rule::in(Market::codes())],
+            'currency' => 'nullable|string|size:3|alpha',
+            'allow_fx' => 'nullable|boolean',
+            'fx_quote_id' => 'nullable|string',
+        ]);
 
-                return ['provider' => $provider, 'cost' => $cost, 'index' => $index];
-            })
-            ->sortBy([['cost', 'asc'], ['index', 'asc']])
-            ->pluck('provider')
-            ->values();
+        $country = strtoupper($request['country']);
+        $currency = Currency::resolve($request->input('currency'), $country);
+        $amount = FeeCalculator::money((string) $request->input('amount'));
+        $decimals = Currency::decimals($currency);
+        $allowFx = (bool) $request->boolean('allow_fx') || $request->filled('fx_quote_id');
+
+        if ($amount->strippedOfTrailingZeros()->getScale() > $decimals) {
+            return ApiResponse::error("{$currency} amounts can have at most {$decimals} decimal places", 422);
+        }
+
+        try {
+            $quotes = $quoter->quote($request->user(), $amount, $country, $currency, allowFx: $allowFx);
+        } catch (NoEligibleProviderException $e) {
+            return ApiResponse::error($e->getMessage(), 400);
+        }
+
+        return ApiResponse::success('Quote generated', [
+            'amount' => (string) $amount->toScale($decimals),
+            'currency' => $currency,
+            'country' => $country,
+            'quoted_at' => now()->toIso8601String(),
+            'quotes' => array_map(fn (ProviderQuote $quote): array => $quote->toArray(), $quotes),
+        ]);
     }
 
     /**
@@ -170,7 +163,7 @@ class SwitchController extends Controller
      * for the latest status, persists it, and — once the transaction settles —
      * notifies the merchant's callback URL if one was supplied.
      */
-    public function verifyPayment(Request $request): JsonResponse
+    public function verifyPayment(Request $request, TransactionVerifier $verifier): JsonResponse
     {
         $validated = $request->validate([
             'transaction_id' => 'required|string',
@@ -190,45 +183,6 @@ class SwitchController extends Controller
             return ApiResponse::error('Transaction not found', 404);
         }
 
-        $provider = $transaction->paymentProvider;
-
-        if (! $provider || ! class_exists($provider->class)) {
-            return ApiResponse::error('The provider for this transaction is no longer available', 422);
-        }
-
-        $providerInstance = app($provider->class);
-
-        if (! $providerInstance instanceof PaymentProviderInterface) {
-            return ApiResponse::error('Payment driver must implement PaymentProviderInterface', 500);
-        }
-
-        // Attribute the verification's outgoing gateway calls to this provider.
-        ProviderCallContext::set($provider);
-
-        try {
-            if ($configError = $providerInstance->setProvider($provider)) {
-                return $configError;
-            }
-
-            // The provider re-checks the transaction and persists its latest status.
-            $response = $providerInstance->verifyPayment($transaction);
-        } finally {
-            ProviderCallContext::clear();
-        }
-
-        $this->notifyCallbackIfSettled($transaction->refresh());
-
-        return $response;
-    }
-
-    /**
-     * Dispatch a one-time callback to the merchant once a transaction has
-     * settled (succeeded or failed) and a callback URL was supplied.
-     */
-    private function notifyCallbackIfSettled(Transaction $transaction): void
-    {
-        if ($transaction->isFinal() && $transaction->callback_url && ! $transaction->callback_notified_at) {
-            SendTransactionCallback::dispatch($transaction);
-        }
+        return $verifier->verify($transaction);
     }
 }

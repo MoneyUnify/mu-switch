@@ -72,6 +72,9 @@ test('dashboard aggregates the authenticated users transactions', function () {
             ->where('currency', 'ZMW')
             ->where('stats.transactions.value', 4)
             ->where('stats.volume.value', 300)
+            ->has('stats.volume.currencies', 4)
+            ->where('stats.volume.currencies.0.currency', 'ZMW')
+            ->where('stats.volume.currencies.0.value', 300)
             ->where('stats.successRate.value', 75)
             ->where('stats.failed.value', 1)
             ->where('stats.activeProviders.value', 1)
@@ -82,6 +85,10 @@ test('dashboard aggregates the authenticated users transactions', function () {
             ->where('providerPerformance.data.0.volume', 300)
             ->has('recentTransactions.data', 4)
             ->where('recentTransactions.data.0.customer', 'Jane Doe')
+            ->has('trendCurrencies', 1)
+            ->where('trendCurrencies.0.currency', 'ZMW')
+            ->where('trendCurrencies.0.count', 4)
+            ->where('trendCurrencies.0.volume', 300)
         );
 });
 
@@ -257,5 +264,73 @@ test('recent transactions can be searched', function () {
             ->has('recentTransactions.data', 1)
             ->where('recentTransactions.data.0.customer', 'Alice Banda')
             ->where('transactionFilters.q', 'Alice')
+        );
+});
+
+test('dashboard transaction activity trend includes all transacted currencies and excludes untransacted ones', function () {
+    $user = User::factory()->create();
+    $customer = Customer::create(['name' => 'John Doe', 'email' => 'john@example.com']);
+
+    $provider = PaymentProvider::create([
+        'user_id' => $user->id,
+        'name' => 'Paypal',
+        'class' => 'PaypalClass',
+        'config' => ['api_key' => 'key'],
+        'is_active' => true,
+    ]);
+
+    // Create 2 USD transactions ($50 and $30)
+    Transaction::create([
+        'transaction_id' => 'txn-usd-1',
+        'payment_provider_id' => $provider->id,
+        'provider_transaction_id' => 'prov-usd-1',
+        'customer_id' => $customer->id,
+        'amount' => 50,
+        'currency' => 'USD',
+        'status' => TransactionStatus::SUCCESS,
+        'direction' => 'credit',
+        'is_fx' => false,
+    ]);
+    Transaction::create([
+        'transaction_id' => 'txn-usd-2',
+        'payment_provider_id' => $provider->id,
+        'provider_transaction_id' => 'prov-usd-2',
+        'customer_id' => $customer->id,
+        'amount' => 30,
+        'currency' => 'USD',
+        'status' => TransactionStatus::SUCCESS,
+        'direction' => 'credit',
+        'is_fx' => false,
+    ]);
+
+    // Create 1 ZMW transaction (ZK 150)
+    Transaction::create([
+        'transaction_id' => 'txn-zmw-1',
+        'payment_provider_id' => $provider->id,
+        'provider_transaction_id' => 'prov-zmw-1',
+        'customer_id' => $customer->id,
+        'amount' => 150,
+        'currency' => 'ZMW',
+        'status' => TransactionStatus::SUCCESS,
+        'direction' => 'credit',
+        'is_fx' => false,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('dashboard'))
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('trendCurrencies', 2)
+            ->where('trendCurrencies.0.currency', 'USD')
+            ->where('trendCurrencies.0.count', 2)
+            ->where('trendCurrencies.0.volume', 80)
+            ->where('trendCurrencies.1.currency', 'ZMW')
+            ->where('trendCurrencies.1.count', 1)
+            ->where('trendCurrencies.1.volume', 150)
+            ->has('volumeTrend', 14)
+            ->where('volumeTrend.13.count', 3)
+            ->where('volumeTrend.13.USD_count', 2)
+            ->where('volumeTrend.13.USD_volume', 80)
+            ->where('volumeTrend.13.ZMW_count', 1)
+            ->where('volumeTrend.13.ZMW_volume', 150)
         );
 });

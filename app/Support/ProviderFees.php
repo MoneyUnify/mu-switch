@@ -4,20 +4,21 @@ namespace App\Support;
 
 use App\Http\Controllers\Providers\FlutterwaveController;
 use App\Models\PaymentProvider;
+use App\Support\Fees\FeeCalculator;
 
 /**
  * Provider fee logic: reads a provider's fee schedule, computes the collection
- * and settlement fees for an amount, and extracts the actual collection fee from
- * a charge response for providers that return one.
- *
- * A schedule is:
- *   [
- *     'collection' => ['percent' => 1.0, 'flat' => 0.0, 'min' => 0.0, 'max' => null],
- *     'settlement' => ['tiers' => [['max' => 1000, 'fee' => 8.5]], 'default' => 8.5],
- *   ]
+ * and settlement fees for an amount (via {@see FeeCalculator}), and extracts
+ * the actual collection fee from a charge response for providers that return one.
+ * See FeeCalculator for the schedule format.
  */
 class ProviderFees
 {
+    /**
+     * Currency assumed when none is given (two decimal places).
+     */
+    private const DEFAULT_CURRENCY = 'USD';
+
     /**
      * Response paths (dot notation) where a provider returns the actual fee it
      * charged for a collection, keyed by driver class.
@@ -48,54 +49,51 @@ class ProviderFees
     }
 
     /**
-     * The collection fee for an amount under a schedule.
+     * The collection fee for an amount under a schedule, rounded to the currency.
      *
      * @param  array<string, mixed>  $schedule
      */
-    public static function collectionFee(array $schedule, float $amount): float
+    public static function collectionFee(array $schedule, float $amount, ?string $currency = null): float
     {
-        $collection = $schedule['collection'] ?? [];
+        $calculator = new FeeCalculator($schedule, $currency ?? self::DEFAULT_CURRENCY);
 
-        $fee = ($amount * (float) ($collection['percent'] ?? 0)) / 100 + (float) ($collection['flat'] ?? 0);
-
-        if (isset($collection['min'])) {
-            $fee = max($fee, (float) $collection['min']);
-        }
-
-        if (isset($collection['max']) && $collection['max'] !== null) {
-            $fee = min($fee, (float) $collection['max']);
-        }
-
-        return round($fee, 4);
+        return $calculator->collectionFee(FeeCalculator::money($amount))->toFloat();
     }
 
     /**
      * The settlement fee for an amount under a schedule (tiered by amount band,
-     * falling back to the schedule default).
+     * falling back to the schedule default), rounded to the currency.
      *
      * @param  array<string, mixed>  $schedule
      */
-    public static function settlementFee(array $schedule, float $amount): float
+    public static function settlementFee(array $schedule, float $amount, ?string $currency = null): float
     {
-        $settlement = $schedule['settlement'] ?? [];
+        $calculator = new FeeCalculator($schedule, $currency ?? self::DEFAULT_CURRENCY);
 
-        foreach ($settlement['tiers'] ?? [] as $tier) {
-            if ($amount <= (float) ($tier['max'] ?? INF)) {
-                return round((float) ($tier['fee'] ?? 0), 4);
-            }
-        }
-
-        return round((float) ($settlement['default'] ?? 0), 4);
+        return $calculator->settlementFee(FeeCalculator::money($amount))->toFloat();
     }
 
     /**
-     * The actual collection fee a provider returned in its charge response, or
-     * null when this provider doesn't report one.
+     * The payout fee for an amount, or null when the schedule doesn't price payouts.
+     *
+     * @param  array<string, mixed>  $schedule
      */
-    public static function actualCollectionFee(?string $class, mixed $providerResponse): ?float
+    public static function payoutFee(array $schedule, float $amount, ?string $currency = null): ?float
     {
-        $path = self::ACTUAL_FEE_PATHS[$class] ?? null;
-        if (! $path || $providerResponse === null) {
+        $calculator = new FeeCalculator($schedule, $currency ?? self::DEFAULT_CURRENCY);
+
+        return $calculator->payoutFee(FeeCalculator::money($amount))?->toFloat();
+    }
+
+    /**
+     * The actual collection fee a provider reported for a payment, or null when
+     * it doesn't report one. Drivers may define a static
+     * `actualCollectionFee(array $response, string $currency): ?string`;
+     * otherwise a known response path is read.
+     */
+    public static function actualCollectionFee(?string $class, mixed $providerResponse, ?string $currency = null): ?float
+    {
+        if (! $class || $providerResponse === null) {
             return null;
         }
 
@@ -104,7 +102,14 @@ class ProviderFees
             return null;
         }
 
-        $value = data_get($data, $path);
+        if (method_exists($class, 'actualCollectionFee')) {
+            $fee = $class::actualCollectionFee($data, (string) $currency);
+
+            return $fee === null ? null : FeeCalculator::money($fee)->toFloat();
+        }
+
+        $path = self::ACTUAL_FEE_PATHS[$class] ?? null;
+        $value = $path ? data_get($data, $path) : null;
 
         return is_numeric($value) ? round((float) $value, 4) : null;
     }

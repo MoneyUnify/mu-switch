@@ -1,10 +1,11 @@
 import { Head, useForm } from '@inertiajs/react';
+import { Button, RadioCards } from '@radix-ui/themes';
 import { Eye, Route as RouteIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button, RadioCards } from '@radix-ui/themes';
 import { Card } from '@/components/ui/card';
-import feePolicy from '@/routes/fee-policy';
+import { DisabledTooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import feePolicy from '@/routes/fee-policy';
 
 interface FeePolicyProps {
     policy: string;
@@ -71,6 +72,7 @@ export default function FeePolicyPage({ policy }: FeePolicyProps) {
                         {POLICIES.map((option) => {
                             const Icon = option.icon;
                             const active = data.policy === option.value;
+
                             return (
                                 <RadioCards.Item
                                     key={option.value}
@@ -112,13 +114,22 @@ export default function FeePolicyPage({ policy }: FeePolicyProps) {
                         <span className="text-xs text-neutral-400">
                             {dirty ? 'Unsaved changes' : 'Active policy saved'}
                         </span>
-                        <Button
-                            onClick={save}
+                        <DisabledTooltip
                             disabled={!dirty || processing}
-                            className="cursor-pointer"
+                            content={
+                                processing
+                                    ? 'Saving policy changes…'
+                                    : 'Select a different fee policy to enable saving.'
+                            }
                         >
-                            Save policy
-                        </Button>
+                            <Button
+                                onClick={save}
+                                disabled={!dirty || processing}
+                                className="cursor-pointer"
+                            >
+                                Save policy
+                            </Button>
+                        </DisabledTooltip>
                     </div>
                 </Card>
             </div>

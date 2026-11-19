@@ -1,13 +1,26 @@
 import { Head, Link, router, usePoll } from '@inertiajs/react';
-import { AlertTriangle, ChevronLeft, ChevronRight, Search, ScrollText } from 'lucide-react';
+import { Badge as RtBadge, Button, Select, TextField } from '@radix-ui/themes';
+import {
+    AlertTriangle,
+    ChevronLeft,
+    ChevronRight,
+    Search,
+    ScrollText,
+} from 'lucide-react';
 import { useState } from 'react';
-import { Badge as RtBadge, Button, Select, Tabs, TextField } from '@radix-ui/themes';
+import { StatusAreaChart } from '@/components/status-area-chart';
+import type { StatusPoint } from '@/components/status-area-chart';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { StatusAreaChart, type StatusPoint } from '@/components/status-area-chart';
-import logs from '@/routes/logs';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import logs from '@/routes/logs';
 
 interface MnoCall {
     id: number;
@@ -72,7 +85,12 @@ interface Filters {
 
 interface LogsProps {
     logs: Paginated<LogRow>;
-    stats: { total: number; success: number; clientError: number; serverError: number };
+    stats: {
+        total: number;
+        success: number;
+        clientError: number;
+        serverError: number;
+    };
     chart: { points: StatusPoint[]; grain: string };
     filters: Filters;
     fieldOptions: string[];
@@ -97,10 +115,22 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 function statusClasses(status: number | null): string {
-    if (status === null) return 'bg-neutral-100 text-neutral-600 dark:bg-neutral-500/15 dark:text-neutral-400';
-    if (status < 300) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400';
-    if (status < 400) return 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400';
-    if (status < 500) return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400';
+    if (status === null) {
+        return 'bg-neutral-100 text-neutral-600 dark:bg-neutral-500/15 dark:text-neutral-400';
+    }
+
+    if (status < 300) {
+        return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400';
+    }
+
+    if (status < 400) {
+        return 'bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-400';
+    }
+
+    if (status < 500) {
+        return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400';
+    }
+
     return 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400';
 }
 
@@ -120,34 +150,66 @@ function methodClasses(method: string): string {
     }
 }
 
-function SummaryCard({ label, value, href, active, accent }: { label: string; value: number; href: string; active: boolean; accent: string }) {
+function SummaryCard({
+    label,
+    value,
+    href,
+    active,
+    accent,
+}: {
+    label: string;
+    value: number;
+    href: string;
+    active: boolean;
+    accent: string;
+}) {
     return (
         <Link href={href} preserveScroll>
             <Card
                 className={cn(
                     'gap-0 border p-5 transition-colors hover:border-neutral-400 dark:hover:border-neutral-600',
-                    active ? 'border-ring ring-1 ring-ring/40' : 'border-sidebar-border/70 dark:border-sidebar-border',
+                    active
+                        ? 'border-ring ring-1 ring-ring/40'
+                        : 'border-sidebar-border/70 dark:border-sidebar-border',
                 )}
             >
                 <div className="flex items-center gap-2">
                     <span className={cn('h-2 w-2 rounded-full', accent)} />
-                    <span className="text-sm font-medium text-neutral-500 dark:text-neutral-400">{label}</span>
+                    <span className="text-sm font-medium text-neutral-500 dark:text-neutral-400">
+                        {label}
+                    </span>
                 </div>
-                <div className="mt-2 text-xl font-bold tabular-nums">{value.toLocaleString()}</div>
+                <div className="mt-2 text-xl font-bold tabular-nums">
+                    {value.toLocaleString()}
+                </div>
             </Card>
         </Link>
     );
 }
 
-function PrevNext({ prevUrl, nextUrl }: { prevUrl: string | null; nextUrl: string | null }) {
-    const base = 'inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors';
-    const enabled = 'border-sidebar-border/70 text-neutral-600 hover:bg-neutral-100 dark:border-sidebar-border dark:text-neutral-300 dark:hover:bg-neutral-800';
-    const disabled = 'cursor-not-allowed border-sidebar-border/40 text-neutral-300 dark:border-sidebar-border/60 dark:text-neutral-700';
+function PrevNext({
+    prevUrl,
+    nextUrl,
+}: {
+    prevUrl: string | null;
+    nextUrl: string | null;
+}) {
+    const base =
+        'inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors';
+    const enabled =
+        'border-sidebar-border/70 text-neutral-600 hover:bg-neutral-100 dark:border-sidebar-border dark:text-neutral-300 dark:hover:bg-neutral-800';
+    const disabled =
+        'cursor-not-allowed border-sidebar-border/40 text-neutral-300 dark:border-sidebar-border/60 dark:text-neutral-700';
 
     return (
         <div className="flex items-center gap-1.5">
             {prevUrl ? (
-                <Link href={prevUrl} preserveScroll preserveState className={cn(base, enabled)}>
+                <Link
+                    href={prevUrl}
+                    preserveScroll
+                    preserveState
+                    className={cn(base, enabled)}
+                >
                     <ChevronLeft className="h-3.5 w-3.5" /> Previous
                 </Link>
             ) : (
@@ -156,7 +218,12 @@ function PrevNext({ prevUrl, nextUrl }: { prevUrl: string | null; nextUrl: strin
                 </span>
             )}
             {nextUrl ? (
-                <Link href={nextUrl} preserveScroll preserveState className={cn(base, enabled)}>
+                <Link
+                    href={nextUrl}
+                    preserveScroll
+                    preserveState
+                    className={cn(base, enabled)}
+                >
                     Next <ChevronRight className="h-3.5 w-3.5" />
                 </Link>
             ) : (
@@ -176,11 +243,19 @@ function prettyJson(value: string): string {
     }
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+    title,
+    children,
+}: {
+    title: string;
+    children: React.ReactNode;
+}) {
     return (
         <div>
-            <h3 className="mb-1 text-xs font-semibold tracking-wide text-neutral-500 uppercase dark:text-neutral-400">{title}</h3>
-            <pre className="max-h-64 overflow-y-auto rounded-md bg-neutral-50 p-3 text-xs whitespace-pre-wrap break-all text-neutral-800 dark:bg-neutral-900 dark:text-neutral-200">
+            <h3 className="mb-1 text-xs font-semibold tracking-wide text-neutral-500 uppercase dark:text-neutral-400">
+                {title}
+            </h3>
+            <pre className="max-h-64 overflow-y-auto rounded-md bg-neutral-50 p-3 text-xs break-all whitespace-pre-wrap text-neutral-800 dark:bg-neutral-900 dark:text-neutral-200">
                 {children}
             </pre>
         </div>
@@ -195,10 +270,24 @@ function MnoCallItem({ call, index }: { call: MnoCall; index: number }) {
     return (
         <details className="group rounded-md border border-sidebar-border/60 dark:border-sidebar-border">
             <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs">
-                <span className="w-4 shrink-0 text-neutral-400 tabular-nums">{index + 1}</span>
-                {call.failed && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-500" />}
-                <span className={cn('shrink-0 font-mono font-semibold', methodClasses(call.method))}>{call.method}</span>
-                <span className="min-w-0 flex-1 truncate font-mono text-neutral-700 dark:text-neutral-300" title={call.url}>
+                <span className="w-4 shrink-0 text-neutral-400 tabular-nums">
+                    {index + 1}
+                </span>
+                {call.failed && (
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                )}
+                <span
+                    className={cn(
+                        'shrink-0 font-mono font-semibold',
+                        methodClasses(call.method),
+                    )}
+                >
+                    {call.method}
+                </span>
+                <span
+                    className="min-w-0 flex-1 truncate font-mono text-neutral-700 dark:text-neutral-300"
+                    title={call.url}
+                >
                     {call.path}
                 </span>
                 {call.provider && (
@@ -206,7 +295,12 @@ function MnoCallItem({ call, index }: { call: MnoCall; index: number }) {
                         {call.provider}
                     </RtBadge>
                 )}
-                <span className={cn('shrink-0 rounded px-1.5 py-0.5 font-medium tabular-nums', statusClasses(call.status))}>
+                <span
+                    className={cn(
+                        'shrink-0 rounded px-1.5 py-0.5 font-medium tabular-nums',
+                        statusClasses(call.status),
+                    )}
+                >
                     {call.status ?? 'ERR'}
                 </span>
                 <span className="w-14 shrink-0 text-right text-neutral-400 tabular-nums">
@@ -223,18 +317,37 @@ function MnoCallItem({ call, index }: { call: MnoCall; index: number }) {
                         {call.errorMessage}
                     </div>
                 )}
-                {call.requestHeaders && Object.keys(call.requestHeaders).length > 0 && (
-                    <Section title="Request Headers">{JSON.stringify(call.requestHeaders, null, 2)}</Section>
+                {call.requestHeaders &&
+                    Object.keys(call.requestHeaders).length > 0 && (
+                        <Section title="Request Headers">
+                            {JSON.stringify(call.requestHeaders, null, 2)}
+                        </Section>
+                    )}
+                {call.requestBody && (
+                    <Section title="Request Body">
+                        {prettyJson(call.requestBody)}
+                    </Section>
                 )}
-                {call.requestBody && <Section title="Request Body">{prettyJson(call.requestBody)}</Section>}
-                {call.responseBody && <Section title="Response Body">{prettyJson(call.responseBody)}</Section>}
+                {call.responseBody && (
+                    <Section title="Response Body">
+                        {prettyJson(call.responseBody)}
+                    </Section>
+                )}
             </div>
         </details>
     );
 }
 
-export default function Index({ logs: page, stats, chart, filters, fieldOptions, perPageOptions }: LogsProps) {
+export default function Index({
+    logs: page,
+    stats,
+    chart,
+    filters,
+    fieldOptions,
+    perPageOptions,
+}: LogsProps) {
     const [selected, setSelected] = useState<LogRow | null>(null);
+    const [detailTab, setDetailTab] = useState<'overview' | 'mno'>('overview');
     const [q, setQ] = useState(filters.q ?? '');
     const [field, setField] = useState(filters.field);
     const [from, setFrom] = useState(filters.from);
@@ -251,19 +364,29 @@ export default function Index({ logs: page, stats, chart, filters, fieldOptions,
         field: filters.field !== 'all' ? filters.field : undefined,
         from: filters.range === 'custom' ? filters.from : undefined,
         to: filters.range === 'custom' ? filters.to : undefined,
-        perPage: filters.perPage !== perPageOptions[0] ? String(filters.perPage) : undefined,
+        perPage:
+            filters.perPage !== perPageOptions[0]
+                ? String(filters.perPage)
+                : undefined,
     };
 
     const urlWith = (overrides: Record<string, string | undefined>) => {
         const query = { ...baseQuery, ...overrides };
         Object.keys(query).forEach((k) => {
-            if (query[k] === undefined || query[k] === '') delete query[k];
+            if (query[k] === undefined || query[k] === '') {
+                delete query[k];
+            }
         });
+
         return logs.index.url({ query });
     };
 
     const visit = (overrides: Record<string, string | undefined>) =>
-        router.visit(urlWith(overrides), { preserveScroll: true, preserveState: true, replace: true });
+        router.visit(urlWith(overrides), {
+            preserveScroll: true,
+            preserveState: true,
+            replace: true,
+        });
 
     const onRangeChange = (range: string) => {
         if (range === 'custom') {
@@ -275,7 +398,10 @@ export default function Index({ logs: page, stats, chart, filters, fieldOptions,
 
     const submitSearch = (e: React.FormEvent) => {
         e.preventDefault();
-        visit({ q: q.trim() || undefined, field: field !== 'all' ? field : undefined });
+        visit({
+            q: q.trim() || undefined,
+            field: field !== 'all' ? field : undefined,
+        });
     };
 
     return (
@@ -283,18 +409,45 @@ export default function Index({ logs: page, stats, chart, filters, fieldOptions,
             <Head title="API Logs" />
             <div className="flex h-full flex-1 flex-col gap-6 overflow-x-auto rounded-xl p-6">
                 <div>
-                    <h1 className="text-lg font-semibold tracking-tight">API Logs</h1>
+                    <h1 className="text-lg font-semibold tracking-tight">
+                        API Logs
+                    </h1>
                     <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">
-                        Every request to your payment API — captured with its response, timing, and failure traces.
+                        Every request to your payment API — captured with its
+                        response, timing, and failure traces.
                     </p>
                 </div>
 
                 {/* Summary cards */}
                 <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                    <SummaryCard label="Total Requests" value={stats.total} href={urlWith({ status: undefined })} active={!filters.status} accent="bg-neutral-400" />
-                    <SummaryCard label="Success (2xx)" value={stats.success} href={urlWith({ status: 'success' })} active={filters.status === 'success'} accent="bg-emerald-500" />
-                    <SummaryCard label="Client Errors (4xx)" value={stats.clientError} href={urlWith({ status: 'client' })} active={filters.status === 'client'} accent="bg-amber-500" />
-                    <SummaryCard label="Server Errors (5xx)" value={stats.serverError} href={urlWith({ status: 'server' })} active={filters.status === 'server'} accent="bg-red-500" />
+                    <SummaryCard
+                        label="Total Requests"
+                        value={stats.total}
+                        href={urlWith({ status: undefined })}
+                        active={!filters.status}
+                        accent="bg-neutral-400"
+                    />
+                    <SummaryCard
+                        label="Success (2xx)"
+                        value={stats.success}
+                        href={urlWith({ status: 'success' })}
+                        active={filters.status === 'success'}
+                        accent="bg-emerald-500"
+                    />
+                    <SummaryCard
+                        label="Client Errors (4xx)"
+                        value={stats.clientError}
+                        href={urlWith({ status: 'client' })}
+                        active={filters.status === 'client'}
+                        accent="bg-amber-500"
+                    />
+                    <SummaryCard
+                        label="Server Errors (5xx)"
+                        value={stats.serverError}
+                        href={urlWith({ status: 'server' })}
+                        active={filters.status === 'server'}
+                        accent="bg-red-500"
+                    />
                 </div>
 
                 {/* Logs table */}
@@ -302,23 +455,48 @@ export default function Index({ logs: page, stats, chart, filters, fieldOptions,
                     {/* Filter bar — scoped to the records below */}
                     <div className="flex flex-col gap-3 border-b border-sidebar-border/50 p-4 lg:flex-row lg:items-center lg:justify-between dark:border-sidebar-border/70">
                         <div className="flex flex-wrap items-center gap-2">
-                            <Select.Root value={filters.range} onValueChange={onRangeChange}>
+                            <Select.Root
+                                value={filters.range}
+                                onValueChange={onRangeChange}
+                            >
                                 <Select.Trigger variant="surface" />
                                 <Select.Content>
-                                    {Object.entries(RANGE_LABELS).map(([value, label]) => (
-                                        <Select.Item key={value} value={value}>
-                                            {label}
-                                        </Select.Item>
-                                    ))}
+                                    {Object.entries(RANGE_LABELS).map(
+                                        ([value, label]) => (
+                                            <Select.Item
+                                                key={value}
+                                                value={value}
+                                            >
+                                                {label}
+                                            </Select.Item>
+                                        ),
+                                    )}
                                 </Select.Content>
                             </Select.Root>
 
                             {filters.range === 'custom' && (
                                 <div className="flex items-center gap-2">
-                                    <TextField.Root type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-                                    <span className="text-xs text-neutral-400">to</span>
-                                    <TextField.Root type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-                                    <Button variant="soft" onClick={() => visit({ range: 'custom', from, to })}>
+                                    <TextField.Root
+                                        type="date"
+                                        value={from}
+                                        onChange={(e) =>
+                                            setFrom(e.target.value)
+                                        }
+                                    />
+                                    <span className="text-xs text-neutral-400">
+                                        to
+                                    </span>
+                                    <TextField.Root
+                                        type="date"
+                                        value={to}
+                                        onChange={(e) => setTo(e.target.value)}
+                                    />
+                                    <Button
+                                        variant="soft"
+                                        onClick={() =>
+                                            visit({ range: 'custom', from, to })
+                                        }
+                                    >
                                         Apply
                                     </Button>
                                 </div>
@@ -328,15 +506,30 @@ export default function Index({ logs: page, stats, chart, filters, fieldOptions,
                         {page.total > 0 && (
                             <div className="flex items-center gap-3 text-xs text-neutral-500 dark:text-neutral-400">
                                 <span className="hidden whitespace-nowrap lg:inline">
-                                    Showing <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">{page.from ?? 0}</span>–
-                                    <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">{page.to ?? 0}</span> of{' '}
-                                    <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">{page.total.toLocaleString()}</span>
+                                    Showing{' '}
+                                    <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">
+                                        {page.from ?? 0}
+                                    </span>
+                                    –
+                                    <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">
+                                        {page.to ?? 0}
+                                    </span>{' '}
+                                    of{' '}
+                                    <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">
+                                        {page.total.toLocaleString()}
+                                    </span>
                                 </span>
-                                <PrevNext prevUrl={page.prev_page_url} nextUrl={page.next_page_url} />
+                                <PrevNext
+                                    prevUrl={page.prev_page_url}
+                                    nextUrl={page.next_page_url}
+                                />
                             </div>
                         )}
 
-                        <form onSubmit={submitSearch} className="flex items-center gap-2">
+                        <form
+                            onSubmit={submitSearch}
+                            className="flex items-center gap-2"
+                        >
                             <Select.Root value={field} onValueChange={setField}>
                                 <Select.Trigger variant="surface" />
                                 <Select.Content>
@@ -371,42 +564,89 @@ export default function Index({ logs: page, stats, chart, filters, fieldOptions,
                             <table className="w-full text-sm">
                                 <thead>
                                     <tr className="border-b border-sidebar-border/50 text-left text-xs text-neutral-500 dark:border-sidebar-border/70 dark:text-neutral-400">
-                                        <th className="px-5 py-3 font-medium">When</th>
-                                        <th className="px-5 py-3 font-medium">Method</th>
-                                        <th className="px-5 py-3 font-medium">Endpoint</th>
-                                        <th className="px-5 py-3 font-medium">IP</th>
-                                        <th className="px-5 py-3 font-medium">Status</th>
-                                        <th className="px-5 py-3 text-right font-medium">Duration</th>
+                                        <th className="px-5 py-3 font-medium">
+                                            When
+                                        </th>
+                                        <th className="px-5 py-3 font-medium">
+                                            Method
+                                        </th>
+                                        <th className="px-5 py-3 font-medium">
+                                            Endpoint
+                                        </th>
+                                        <th className="px-5 py-3 font-medium">
+                                            IP
+                                        </th>
+                                        <th className="px-5 py-3 font-medium">
+                                            Status
+                                        </th>
+                                        <th className="px-5 py-3 text-right font-medium">
+                                            Duration
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-sidebar-border/40 dark:divide-sidebar-border/60">
                                     {page.data.map((log) => (
                                         <tr
                                             key={log.id}
-                                            onClick={() => setSelected(log)}
+                                            onClick={() => {
+                                                setSelected(log);
+                                                setDetailTab('overview');
+                                            }}
                                             className="cursor-pointer hover:bg-neutral-50/60 dark:hover:bg-neutral-900/40"
                                         >
-                                            <td className="px-5 py-3 whitespace-nowrap" title={log.createdAt ?? undefined}>
-                                                <div className="text-neutral-700 dark:text-neutral-300">{log.createdAtHuman}</div>
-                                                <div className="text-xs text-neutral-400 tabular-nums dark:text-neutral-500">{log.createdAt}</div>
+                                            <td
+                                                className="px-5 py-3 whitespace-nowrap"
+                                                title={
+                                                    log.createdAt ?? undefined
+                                                }
+                                            >
+                                                <div className="text-neutral-700 dark:text-neutral-300">
+                                                    {log.createdAtHuman}
+                                                </div>
+                                                <div className="text-xs text-neutral-400 tabular-nums dark:text-neutral-500">
+                                                    {log.createdAt}
+                                                </div>
                                             </td>
-                                            <td className={cn('px-5 py-3 font-mono text-xs font-semibold', methodClasses(log.method))}>{log.method}</td>
+                                            <td
+                                                className={cn(
+                                                    'px-5 py-3 font-mono text-xs font-semibold',
+                                                    methodClasses(log.method),
+                                                )}
+                                            >
+                                                {log.method}
+                                            </td>
                                             <td className="px-5 py-3">
                                                 <span className="flex items-center gap-1.5 font-mono text-xs">
-                                                    {log.hasException && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-500" />}
-                                                    <span className="truncate" title={log.path}>
+                                                    {log.hasException && (
+                                                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                                                    )}
+                                                    <span
+                                                        className="truncate"
+                                                        title={log.path}
+                                                    >
                                                         {log.path}
                                                     </span>
                                                 </span>
                                             </td>
-                                            <td className="px-5 py-3 font-mono text-xs text-neutral-500 dark:text-neutral-400">{log.ipAddress ?? '—'}</td>
+                                            <td className="px-5 py-3 font-mono text-xs text-neutral-500 dark:text-neutral-400">
+                                                {log.ipAddress ?? '—'}
+                                            </td>
                                             <td className="px-5 py-3">
-                                                <span className={cn('inline-flex rounded-md px-2 py-0.5 text-xs font-medium tabular-nums', statusClasses(log.status))}>
+                                                <span
+                                                    className={cn(
+                                                        'inline-flex rounded-md px-2 py-0.5 text-xs font-medium tabular-nums',
+                                                        statusClasses(
+                                                            log.status,
+                                                        ),
+                                                    )}
+                                                >
                                                     {log.status ?? '—'}
                                                 </span>
                                             </td>
-                                            <td className="px-5 py-3 text-right tabular-nums text-neutral-500 dark:text-neutral-400">
-                                                {log.durationMs !== null ? `${log.durationMs} ms` : '—'}
+                                            <td className="px-5 py-3 text-right text-neutral-500 tabular-nums dark:text-neutral-400">
+                                                {log.durationMs !== null
+                                                    ? `${log.durationMs} ms`
+                                                    : '—'}
                                             </td>
                                         </tr>
                                     ))}
@@ -420,17 +660,34 @@ export default function Index({ logs: page, stats, chart, filters, fieldOptions,
                         <div className="flex flex-col gap-3 border-t border-sidebar-border/50 px-5 py-3 text-sm sm:flex-row sm:items-center sm:justify-between dark:border-sidebar-border/70">
                             <div className="flex items-center gap-3 text-neutral-500 dark:text-neutral-400">
                                 <span>
-                                    Showing <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">{page.from ?? 0}</span>–
-                                    <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">{page.to ?? 0}</span> of{' '}
-                                    <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">{page.total.toLocaleString()}</span>
+                                    Showing{' '}
+                                    <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">
+                                        {page.from ?? 0}
+                                    </span>
+                                    –
+                                    <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">
+                                        {page.to ?? 0}
+                                    </span>{' '}
+                                    of{' '}
+                                    <span className="font-medium text-neutral-700 tabular-nums dark:text-neutral-300">
+                                        {page.total.toLocaleString()}
+                                    </span>
                                 </span>
                                 <span className="flex items-center gap-1.5">
                                     <span className="text-xs">Per page</span>
-                                    <Select.Root value={String(filters.perPage)} onValueChange={(value) => visit({ perPage: value })}>
+                                    <Select.Root
+                                        value={String(filters.perPage)}
+                                        onValueChange={(value) =>
+                                            visit({ perPage: value })
+                                        }
+                                    >
                                         <Select.Trigger variant="surface" />
                                         <Select.Content>
                                             {perPageOptions.map((option) => (
-                                                <Select.Item key={option} value={String(option)}>
+                                                <Select.Item
+                                                    key={option}
+                                                    value={String(option)}
+                                                >
                                                     {option}
                                                 </Select.Item>
                                             ))}
@@ -443,31 +700,40 @@ export default function Index({ logs: page, stats, chart, filters, fieldOptions,
                                 <div className="flex flex-wrap items-center gap-1.5">
                                     {/* Numbered pages only — Laravel's first/last links are the prev/next arrows, which PrevNext already renders. */}
                                     <div className="flex flex-wrap items-center gap-1">
-                                        {page.links.slice(1, -1).map((link, i) =>
-                                            link.url ? (
-                                                <Link
-                                                    key={i}
-                                                    href={link.url}
-                                                    preserveScroll
-                                                    preserveState
-                                                    className={cn(
-                                                        'min-w-8 rounded-md px-2.5 py-1 text-center text-xs transition-colors',
-                                                        link.active
-                                                            ? 'bg-primary text-primary-foreground'
-                                                            : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
-                                                    )}
-                                                    dangerouslySetInnerHTML={{ __html: link.label }}
-                                                />
-                                            ) : (
-                                                <span
-                                                    key={i}
-                                                    className="min-w-8 px-2.5 py-1 text-center text-xs text-neutral-300 dark:text-neutral-700"
-                                                    dangerouslySetInnerHTML={{ __html: link.label }}
-                                                />
-                                            ),
-                                        )}
+                                        {page.links
+                                            .slice(1, -1)
+                                            .map((link, i) =>
+                                                link.url ? (
+                                                    <Link
+                                                        key={i}
+                                                        href={link.url}
+                                                        preserveScroll
+                                                        preserveState
+                                                        className={cn(
+                                                            'min-w-8 rounded-md px-2.5 py-1 text-center text-xs transition-colors',
+                                                            link.active
+                                                                ? 'bg-primary text-primary-foreground'
+                                                                : 'text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800',
+                                                        )}
+                                                        dangerouslySetInnerHTML={{
+                                                            __html: link.label,
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <span
+                                                        key={i}
+                                                        className="min-w-8 px-2.5 py-1 text-center text-xs text-neutral-300 dark:text-neutral-700"
+                                                        dangerouslySetInnerHTML={{
+                                                            __html: link.label,
+                                                        }}
+                                                    />
+                                                ),
+                                            )}
                                     </div>
-                                    <PrevNext prevUrl={page.prev_page_url} nextUrl={page.next_page_url} />
+                                    <PrevNext
+                                        prevUrl={page.prev_page_url}
+                                        nextUrl={page.next_page_url}
+                                    />
                                 </div>
                             )}
                         </div>
@@ -477,9 +743,14 @@ export default function Index({ logs: page, stats, chart, filters, fieldOptions,
                 {/* Status-code timeline */}
                 <Card className="gap-0 border border-sidebar-border/70 p-5 dark:border-sidebar-border">
                     <div className="mb-2">
-                        <h2 className="text-sm font-semibold">Response Status Timeline</h2>
+                        <h2 className="text-sm font-semibold">
+                            Response Status Timeline
+                        </h2>
                         <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                            Responses by status class over {RANGE_LABELS[filters.range]?.toLowerCase() ?? 'the selected range'} ({chart.grain === 'hour' ? 'hourly' : 'daily'})
+                            Responses by status class over{' '}
+                            {RANGE_LABELS[filters.range]?.toLowerCase() ??
+                                'the selected range'}{' '}
+                            ({chart.grain === 'hour' ? 'hourly' : 'daily'})
                         </p>
                     </div>
                     <StatusAreaChart points={chart.points} />
@@ -487,69 +758,154 @@ export default function Index({ logs: page, stats, chart, filters, fieldOptions,
             </div>
 
             {/* Detail dialog */}
-            <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
+            <Dialog
+                open={!!selected}
+                onOpenChange={(open) => !open && setSelected(null)}
+            >
                 <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-2xl">
                     <DialogHeader className="min-w-0 shrink-0 border-b pr-8 pb-4">
                         <DialogTitle className="flex min-w-0 items-center gap-2">
-                            <span className={cn('shrink-0 font-mono text-sm', methodClasses(selected?.method ?? ''))}>{selected?.method}</span>
-                            <span className="min-w-0 flex-1 truncate font-mono text-sm">{selected?.path}</span>
+                            <span
+                                className={cn(
+                                    'shrink-0 font-mono text-sm',
+                                    methodClasses(selected?.method ?? ''),
+                                )}
+                            >
+                                {selected?.method}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate font-mono text-sm">
+                                {selected?.path}
+                            </span>
                         </DialogTitle>
                         <DialogDescription>
-                            {selected?.createdAt} · {selected?.durationMs} ms · IP {selected?.ipAddress ?? 'unknown'}
+                            {selected?.createdAt} · {selected?.durationMs} ms ·
+                            IP {selected?.ipAddress ?? 'unknown'}
                         </DialogDescription>
                     </DialogHeader>
 
                     {selected && (
-                        <Tabs.Root defaultValue="overview" className="flex min-h-0 flex-1 flex-col">
-                            <Tabs.List>
-                                <Tabs.Trigger value="overview">Overview</Tabs.Trigger>
-                                <Tabs.Trigger value="mno">MNO Calls ({selected.mnoCalls.length})</Tabs.Trigger>
-                            </Tabs.List>
+                        <div className="flex min-h-0 flex-1 flex-col">
+                            <div className="flex gap-6 border-b border-sidebar-border px-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setDetailTab('overview')}
+                                    className={cn(
+                                        'relative cursor-pointer pt-1 pb-2.5 text-sm font-medium transition-colors',
+                                        detailTab === 'overview'
+                                            ? 'font-semibold text-neutral-900 after:absolute after:right-0 after:bottom-0 after:left-0 after:h-0.5 after:bg-neutral-900 dark:text-neutral-100 dark:after:bg-neutral-100'
+                                            : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200',
+                                    )}
+                                >
+                                    Overview
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setDetailTab('mno')}
+                                    className={cn(
+                                        'relative cursor-pointer pt-1 pb-2.5 text-sm font-medium transition-colors',
+                                        detailTab === 'mno'
+                                            ? 'font-semibold text-neutral-900 after:absolute after:right-0 after:bottom-0 after:left-0 after:h-0.5 after:bg-neutral-900 dark:text-neutral-100 dark:after:bg-neutral-100'
+                                            : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200',
+                                    )}
+                                >
+                                    MNO Calls ({selected.mnoCalls.length})
+                                </button>
+                            </div>
 
-                            <Tabs.Content value="overview" className="-mr-2 mt-3 min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto pr-2">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <span className={cn('inline-flex rounded-md px-2 py-0.5 text-xs font-medium', statusClasses(selected.status))}>
-                                        HTTP {selected.status ?? '—'}
-                                    </span>
-                                    {selected.route && <Badge variant="outline">{selected.route}</Badge>}
-                                </div>
-
-                                {selected.hasException && (
-                                    <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-500/30 dark:bg-red-500/10">
-                                        <div className="flex items-center gap-2 text-sm font-semibold text-red-700 dark:text-red-400">
-                                            <AlertTriangle className="h-4 w-4" /> {selected.exceptionClass}
-                                        </div>
-                                        {selected.exceptionMessage && (
-                                            <p className="mt-1 text-xs break-words text-red-700/90 dark:text-red-300">{selected.exceptionMessage}</p>
+                            {detailTab === 'overview' && (
+                                <div className="mt-3 -mr-2 min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto pr-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span
+                                            className={cn(
+                                                'inline-flex rounded-md px-2 py-0.5 text-xs font-medium',
+                                                statusClasses(selected.status),
+                                            )}
+                                        >
+                                            HTTP {selected.status ?? '—'}
+                                        </span>
+                                        {selected.route && (
+                                            <Badge variant="outline">
+                                                {selected.route}
+                                            </Badge>
                                         )}
                                     </div>
-                                )}
 
-                                {selected.requestBody && Object.keys(selected.requestBody).length > 0 && (
-                                    <Section title="Request Body">{JSON.stringify(selected.requestBody, null, 2)}</Section>
-                                )}
-                                {selected.requestHeaders && <Section title="Request Headers">{JSON.stringify(selected.requestHeaders, null, 2)}</Section>}
-                                {selected.responseBody && <Section title="Response Body">{prettyJson(selected.responseBody)}</Section>}
-                                {selected.exceptionTrace && <Section title="Stack Trace">{selected.exceptionTrace}</Section>}
-                            </Tabs.Content>
+                                    {selected.hasException && (
+                                        <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-500/30 dark:bg-red-500/10">
+                                            <div className="flex items-center gap-2 text-sm font-semibold text-red-700 dark:text-red-400">
+                                                <AlertTriangle className="h-4 w-4" />{' '}
+                                                {selected.exceptionClass}
+                                            </div>
+                                            {selected.exceptionMessage && (
+                                                <p className="mt-1 text-xs break-words text-red-700/90 dark:text-red-300">
+                                                    {selected.exceptionMessage}
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
 
-                            <Tabs.Content value="mno" className="-mr-2 mt-3 min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-2">
-                                {selected.mnoCalls.length === 0 ? (
-                                    <div className="py-10 text-center text-xs text-neutral-400">
-                                        This request made no internal MNO/gateway calls.
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                            The outgoing gateway calls made while serving this request, in order — the full lifecycle behind the response above.
-                                        </p>
-                                        {selected.mnoCalls.map((call, i) => (
-                                            <MnoCallItem key={call.id} call={call} index={i} />
-                                        ))}
-                                    </div>
-                                )}
-                            </Tabs.Content>
-                        </Tabs.Root>
+                                    {selected.requestBody &&
+                                        Object.keys(selected.requestBody)
+                                            .length > 0 && (
+                                            <Section title="Request Body">
+                                                {JSON.stringify(
+                                                    selected.requestBody,
+                                                    null,
+                                                    2,
+                                                )}
+                                            </Section>
+                                        )}
+                                    {selected.requestHeaders && (
+                                        <Section title="Request Headers">
+                                            {JSON.stringify(
+                                                selected.requestHeaders,
+                                                null,
+                                                2,
+                                            )}
+                                        </Section>
+                                    )}
+                                    {selected.responseBody && (
+                                        <Section title="Response Body">
+                                            {prettyJson(selected.responseBody)}
+                                        </Section>
+                                    )}
+                                    {selected.exceptionTrace && (
+                                        <Section title="Stack Trace">
+                                            {selected.exceptionTrace}
+                                        </Section>
+                                    )}
+                                </div>
+                            )}
+
+                            {detailTab === 'mno' && (
+                                <div className="mt-3 -mr-2 min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-2">
+                                    {selected.mnoCalls.length === 0 ? (
+                                        <div className="py-10 text-center text-xs text-neutral-400">
+                                            This request made no internal
+                                            MNO/gateway calls.
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                                                The outgoing gateway calls made
+                                                while serving this request, in
+                                                order — the full lifecycle
+                                                behind the response above.
+                                            </p>
+                                            {selected.mnoCalls.map(
+                                                (call, i) => (
+                                                    <MnoCallItem
+                                                        key={call.id}
+                                                        call={call}
+                                                        index={i}
+                                                    />
+                                                ),
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     )}
                 </DialogContent>
             </Dialog>

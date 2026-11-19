@@ -218,3 +218,34 @@ test('switch controller returns 400 error if no providers support the country', 
         'message' => 'No active providers support the requested country',
     ]);
 });
+
+test('the switch routes zmw payments to paypal when allow_fx is true', function () {
+    $user = User::factory()->create(['api_token' => 'switch-fx-token']);
+    $paypal = paypalProvider($user);
+
+    Http::fake([
+        '*/v1/oauth2/token' => Http::response(['access_token' => 'A21-paypal-token', 'expires_in' => 32400]),
+        '*/v2/checkout/orders' => Http::response(paypalOrder('ORDER-SWITCH-FX', 'PAYER_ACTION_REQUIRED'), 201),
+    ]);
+
+    $response = $this->withToken('switch-fx-token')
+        ->postJson('/api/v1/payment/request', [
+            'amount' => 500,
+            'account_number' => 'payer@example.com',
+            'country' => 'ZM',
+            'currency' => 'ZMW',
+            'allow_fx' => true,
+        ]);
+
+    $response->assertOk()
+        ->assertJsonPath('status', 'success')
+        ->assertJsonPath('data.is_fx', true)
+        ->assertJsonPath('data.currency', 'USD');
+
+    $this->assertDatabaseHas('transactions', [
+        'payment_provider_id' => $paypal->id,
+        'provider_transaction_id' => 'ORDER-SWITCH-FX',
+        'is_fx' => true,
+        'currency' => 'USD',
+    ]);
+});

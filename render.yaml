@@ -1,0 +1,72 @@
+# Render Blueprint: the MoneyUnify Switch web app (with its queue worker and
+# scheduler) plus a Postgres database. Deploy it from the Render dashboard:
+# New > Blueprint, then pick this repository. See prezet/content/deploy-render.md.
+services:
+  - type: web
+    name: moneyunify
+    runtime: docker
+    # GitHub Actions deploys main once lint, the tests (SQLite and Postgres)
+    # and the Docker build pass, and records each deploy on GitHub (see
+    # .github/workflows/deploy.yml), so Render doesn't deploy on its own.
+    branch: main
+    autoDeployTrigger: "off"
+    # No plan here: new services start on Render's smallest paid instance
+    # (0.5 CPU, 512 MB), which stays awake so the scheduler keeps running.
+    # Pick a plan in the dashboard if you need more.
+    healthCheckPath: /up
+    envVars:
+      # Generate with `php artisan key:generate --show` and paste it in.
+      - key: APP_KEY
+        sync: false
+      # e.g. https://moneyunify.onrender.com (your service's URL).
+      - key: APP_URL
+        sync: false
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: LOG_LEVEL
+        value: info
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_URL
+        fromDatabase:
+          name: moneyunify-db
+          property: connectionString
+      - key: SESSION_DRIVER
+        value: cookie
+      - key: CACHE_STORE
+        value: redis
+      - key: REDIS_CLIENT
+        value: phpredis
+      - key: REDIS_HOST
+        value: 127.0.0.1
+      - key: REDIS_PORT
+        value: "6379"
+      - key: QUEUE_CONNECTION
+        value: database
+      - key: MAIL_MAILER
+        value: log
+      # Disabled for production deployments. Set to "true" only if you want demo accounts seeded.
+      - key: SEED_DEMO_DATA
+        value: "false"
+      - key: PAYPAL_SANDBOX_CLIENT_ID
+        sync: false
+      - key: PAYPAL_SANDBOX_CLIENT_SECRET
+        sync: false
+      - key: PAWAPAY_SANDBOX_TOKEN
+        sync: false
+      # Optional server-wide AI fallback. Any supported provider works (set
+      # AI_PROVIDER and that provider's key); accounts normally choose their
+      # own providers, models and keys on the AI & Agents page instead.
+      - key: AI_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false
+
+databases:
+  - name: moneyunify-db
+    databaseName: moneyunify
+    user: moneyunify

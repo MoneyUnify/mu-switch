@@ -1,6 +1,6 @@
 # MoneyUnify Switch
 
-> MoneyUnify Switch is a source-available, self-hosted payment switch API that unifies mobile money and card providers across Africa. Applications collect payments through a single endpoint — `POST /api/v1/payment/request` — and the switch authenticates the caller, validates the request, filters providers eligible for the destination country, and tries them sequentially with automatic fallback until one succeeds. Every attempt is recorded in one dashboard. Coverage spans 32 countries, 13 built-in providers, and 24 currencies.
+> MoneyUnify Switch is an open-source, self-hosted payment switch API that unifies mobile money and card providers across Africa. Applications collect payments through a single endpoint — `POST /api/v1/payment/request` — and the switch authenticates the caller, validates the request, filters providers eligible for the destination country, and tries them sequentially with automatic fallback until one succeeds. Every attempt is recorded in one dashboard. Coverage spans 32 countries, 14 built-in providers, and 24 currencies.
 
 MoneyUnify Switch removes single-gateway dependency: you integrate once against one API, then add, remove, or reorder the underlying providers from the dashboard without changing a line of client code. If one provider is down or declines, the switch falls back to the next eligible provider so more payments succeed on the first try. It is built with Laravel and Inertia/React and is deployed on your own VPS or machine — there is no central SaaS sign-up; each operator runs and registers on their own instance. Cross-currency (FX) transactions are treated as first-class and recorded with the rate applied.
 
@@ -13,12 +13,18 @@ MoneyUnify Switch removes single-gateway dependency: you integrate once against 
 - [How the Switch Works](https://moneyunify.one/docs/api/overview): the authenticate → validate → filter → sequential-fallback routing pipeline.
 - [Authentication](https://moneyunify.one/docs/api/authentication): Bearer-token authentication for every API call.
 - [Request a Payment](https://moneyunify.one/docs/api/request-payment): the single collection endpoint, its parameters, and examples.
+- [Quote a Payment](https://moneyunify.one/docs/api/quote-payment): fees from both sides (merchant pays or payer pays) for every provider that would route a payment, before charging.
+- [Send a Payout](https://moneyunify.one/docs/api/payouts): send money to a mobile wallet, with fallback that never pays twice and idempotency keys.
+- [Merchant API](https://moneyunify.one/docs/api/merchants): aggregators onboard merchants and charge their customers with PayPal; each payment settles to the merchant's mobile-money wallet, minus the aggregator's commission.
+- [Refund a Payment](https://moneyunify.one/docs/api/refunds): refund a PayPal payment in full or in part, safely retried.
+- [Cross-Border Transfers](https://moneyunify.one/docs/api/cross-border-transfers): the sender pays with PayPal and the recipient is paid on mobile money in their currency, at a locked rate, with an automatic refund if delivery fails.
+- [Exchange Rates & FX Quotes](https://moneyunify.one/docs/api/fx): exchange rates, and conversions locked for 10 minutes, quoted from what you send or what must arrive.
 - [Verify a Payment](https://moneyunify.one/docs/api/verify-payment): confirm the final settled (`success`/`failed`) outcome of a transaction.
 - [Responses & Errors](https://moneyunify.one/docs/api/responses): the consistent response envelope and the full list of status codes.
 - [Coverage](https://moneyunify.one/docs/api/coverage): supported countries, currencies, mobile networks, and the providers that reach each.
 
 ## Providers
-- [Payment Providers](https://moneyunify.one/docs/providers): how to configure gateways, plus the 13 built-in drivers — Lenco, Airtel Money, MTN MoMo, Lipila, M-Pesa (Kenya), M-Pesa (Vodacom), cGrate (Konse Konse 543), Ting by Cellulant, Flutterwave, pawaPay, DPO Pay, MobiPay, and Kazang — and a guide to writing your own.
+- [Payment Providers](https://moneyunify.one/docs/providers): how to configure gateways, plus the 14 built-in drivers — Lenco, Airtel Money, MTN MoMo, Lipila, M-Pesa (Kenya), M-Pesa (Vodacom), cGrate (Konse Konse 543), Ting by Cellulant, Flutterwave, pawaPay, DPO Pay, MobiPay, Kazang, and PayPal — and a guide to writing your own.
 
 ## Optional
 - [GitHub repository](https://github.com/MoneyUnify/mu-switch): source code, issues, and self-hosting instructions.

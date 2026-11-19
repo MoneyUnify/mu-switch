@@ -14,11 +14,11 @@ return new class extends Migration
         // A correlation id shared by an inbound API request and every outgoing
         // gateway (MNO) call it spawned, so the two can be traced together.
         Schema::table('api_logs', function (Blueprint $table) {
-            $table->uuid('request_id')->nullable()->after('id')->index();
+            $table->string('request_id', 64)->nullable()->after('id')->index();
         });
 
         Schema::table('provider_logs', function (Blueprint $table) {
-            $table->uuid('request_id')->nullable()->after('user_id')->index();
+            $table->string('request_id', 64)->nullable()->after('user_id')->index();
         });
     }
 

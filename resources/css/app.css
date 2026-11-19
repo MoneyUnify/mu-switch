@@ -18,11 +18,21 @@
         0 1px 2px 0 color-mix(in oklab, var(--foreground) 8%, transparent),
         0 6px 16px 0 color-mix(in oklab, var(--foreground) 6%, transparent),
         /* sub-card 1 — translucent body peeking ~5px on every side + soft glow */
-        0 0 0 5px color-mix(in oklab, var(--card) 50%, transparent),
+            0 0 0 5px color-mix(in oklab, var(--card) 50%, transparent),
         0 4px 16px 6px color-mix(in oklab, var(--foreground) 5%, transparent),
         /* sub-card 2 — only slightly larger than sub-card 1, more transparent */
-        0 0 0 8px color-mix(in oklab, var(--card) 24%, transparent),
+            0 0 0 8px color-mix(in oklab, var(--card) 24%, transparent),
         0 6px 16px 8px color-mix(in oklab, var(--foreground) 4%, transparent);
+}
+
+/* A card's header, raised above the list it introduces. */
+@utility card-header-raised {
+    position: relative;
+    z-index: 1;
+    background: var(--card);
+    box-shadow:
+        0 1px 0 0 color-mix(in oklab, var(--foreground) 7%, transparent),
+        0 6px 14px -6px color-mix(in oklab, var(--foreground) 16%, transparent);
 }
 
 @theme {
@@ -157,5 +167,54 @@
 
     body {
         @apply bg-background text-foreground;
+    }
+}
+/*
+ * Section glows on the landing page: soft blobs of colour that drift slowly
+ * and loop seamlessly. Stronger in dark mode, still for reduced motion.
+ */
+:root {
+    --glow-strength: 26%;
+}
+
+.dark {
+    --glow-strength: 34%;
+}
+
+@keyframes mu-glow-drift {
+    0%,
+    100% {
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+    33% {
+        transform: translate3d(var(--glow-x), calc(var(--glow-y) * -1), 0)
+            scale(1.2);
+    }
+    66% {
+        transform: translate3d(calc(var(--glow-x) * 0.4), var(--glow-y), 0)
+            scale(0.9);
+    }
+}
+
+@keyframes mu-glow-breathe {
+    0%,
+    100% {
+        opacity: 0.55;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+@utility glow-blob {
+    animation:
+        mu-glow-drift var(--glow-duration, 26s) ease-in-out infinite,
+        mu-glow-breathe calc(var(--glow-duration, 26s) * 0.6) ease-in-out
+            infinite;
+    animation-delay: var(--glow-delay, 0s);
+    will-change: transform, opacity;
+
+    @media (prefers-reduced-motion: reduce) {
+        animation: none;
     }
 }
