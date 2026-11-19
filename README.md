@@ -2,12 +2,16 @@
 
 ![MoneyUnify Logo](public/moneyunify-logo-horizontal.png)
 
-> **MoneyUnify + PayPal: PayPal to mobile money.** MoneyUnify is an
-> open-source payment engine that connects PayPal to African mobile money. A
-> business integrates it once and can take PayPal payments from anyone in the
-> world and settle them straight to a mobile-money wallet, in local currency,
-> at PayPal's own exchange rate, through an API, a pay link or an AI agent.
-> [Read the summary ↓](#moneyunify-paypal-paypal-to-mobile-money-with-an-ai-agent)
+> **MoneyUnify is an open-source payment engine and switch.** Integrate it once
+> and build on a single API that routes payments across many providers with
+> automatic failover: collect on mobile money, accept cards and international
+> payments (PayPal included), send disbursements and payouts in bulk, and move
+> money cross-border into mobile-money wallets in local currency. It is a
+> foundation, not a single product — use it for mobile-money collections on their
+> own, for card-to-wallet and international acceptance, for disbursements, or as
+> the engine behind a payment service, USSD or offline flow you build and operate
+> yourself. PayPal-to-mobile-money, with an AI agent, is one such solution built
+> on it. [See that capability ↓](#moneyunify-paypal-paypal-to-mobile-money-with-an-ai-agent)
 
 ## Table of Contents
 
@@ -346,7 +350,6 @@ below build on top of it and ship in the platform today.
 - [x] Treasury: balances, float alerts, and AI rebalancing suggestions approved by a person
 - [x] Demo data: `composer setup --demo-data`
 - [x] Proven end to end in PayPal's and pawaPay's sandboxes
-- [ ] Hosted demo
 
 **Sources:** GSMA, [*State of the Industry Report on Mobile Money 2026*](https://www.gsma.com/sotir/) (published March 2026), as reported by [ITWeb](https://www.itweb.co.za/article/mobile-money-industry-surpasses-2tn-threshold/Kjlyr7wBwy5vk6am) and [Connecting Africa](https://www.connectingafrica.com/mobile-money/-1-4t-flowed-through-mobile-money-in-sub-saharan-africa-in-2025-gsma); GSMA, *State of the Industry Report on Mobile Money 2025*, as reported by [Forbes Africa](https://www.forbesafrica.com/current-affairs/2025/04/09/sub-saharan-africa-dominates-global-mobile-money-landscape-with-1-1-billion-accounts-new-report-finds); World Bank, [Remittance Prices Worldwide](https://remittanceprices.worldbank.org/).
 
