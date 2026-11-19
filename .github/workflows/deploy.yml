@@ -1,10 +1,11 @@
 name: deploy
 
 # Every push to main is checked (lint, tests on SQLite and Postgres, Docker
-# build), then deployed to Render, and recorded as a GitHub deployment to
-# "production" with the live URL.
+# build). It is then deployed to Render ONLY when the Render secrets are set,
+# and recorded as a GitHub deployment to "production" with the live URL.
 #
-# Needs two repository secrets:
+# Deployment is optional: with no secrets the deploy job is skipped, not failed,
+# so the checks still pass. To enable it, add two repository secrets:
 #   RENDER_API_KEY     Render > Account Settings > API Keys
 #   RENDER_SERVICE_ID  the service's ID (srv-…), from its URL in the dashboard
 # and, on Render, Auto-Deploy set to Off, so this workflow is the only thing
@@ -30,9 +31,31 @@ jobs:
   tests:
     uses: ./.github/workflows/tests.yml
 
+  # Deployment is optional. This job reports whether the Render secrets exist;
+  # the render job runs only when they do, so an unconfigured repo still passes.
+  config:
+    name: Deployment configured?
+    runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.check.outputs.deploy }}
+    steps:
+      - name: Check the Render secrets
+        id: check
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+        run: |
+          if [ -n "$RENDER_API_KEY" ] && [ -n "$RENDER_SERVICE_ID" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Render secrets not set — skipping deployment. Add RENDER_API_KEY and RENDER_SERVICE_ID to enable it."
+          fi
+
   render:
     name: Deploy to Render
-    needs: [lint, tests]
+    needs: [lint, tests, config]
+    if: needs.config.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     environment:
       name: production
@@ -42,13 +65,6 @@ jobs:
       RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
       APP_URL: ${{ vars.APP_URL || 'https://mu-switch-paypal.onrender.com' }}
     steps:
-      - name: Check the Render secrets
-        run: |
-          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
-            echo "::error::Add the RENDER_API_KEY and RENDER_SERVICE_ID repository secrets (Settings > Secrets and variables > Actions)."
-            exit 1
-          fi
-
       - name: Deploy this commit
         id: deploy
         run: |
