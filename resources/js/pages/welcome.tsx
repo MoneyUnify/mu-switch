@@ -65,11 +65,11 @@ const AUDIENCES: Audience[] = [
     {
         id: 'providers',
         eyebrow: 'Aggregators and payment providers',
-        title: 'Give your merchants PayPal, settled to mobile money',
-        body: "Add PayPal to what you already offer. Your merchants share a pay link, their customers pay from anywhere in the world, and the money lands in the merchant's mobile-money wallet.",
+        title: 'One integration your merchants can collect on',
+        body: 'Give your merchants a single way to get paid — mobile money across African networks, plus cards and PayPal for payers abroad — and settle it to their mobile-money wallets. Add a provider once and every merchant gets it.',
         points: [
             'Onboard merchants with their own pay links, receipts and API keys.',
-            'Customers pay with PayPal, or by card without a PayPal account.',
+            'Customers pay by mobile money, card or PayPal.',
             'Set your own fees and FX margin, and earn on every payment.',
         ],
         image: '/images/landing/aggregators.jpg',
@@ -78,11 +78,11 @@ const AUDIENCES: Audience[] = [
     {
         id: 'operators',
         eyebrow: 'Mobile-money operators and banks',
-        title: 'Bring money from abroad straight into your wallets',
-        body: "Run the switch yourself, under your own licence and contracts. Payers in PayPal's markets send money in, and it arrives as a deposit your customers already know how to use.",
+        title: 'Collect and pay out across every rail, from one platform',
+        body: 'Run the switch yourself, under your own licence and contracts. Reach mobile money across networks and bring in payments from abroad by card or PayPal, all reconciled in one place.',
         points: [
-            "New inbound volume from PayPal's 201 markets.",
-            "PayPal's own exchange rate, locked for every quote.",
+            "Inbound volume from abroad, by card or from PayPal's 201 markets.",
+            'Locked exchange rates on every cross-currency quote.',
             'A double-entry ledger, reconciled against every provider.',
         ],
         image: '/images/landing/operators.jpg',
@@ -90,12 +90,12 @@ const AUDIENCES: Audience[] = [
     },
     {
         id: 'merchants',
-        eyebrow: 'Merchants, freelancers and families',
-        title: 'Get paid by the world, in the money you already use',
-        body: 'Sell to customers abroad, invoice overseas clients, or receive money from family. They pay with PayPal; you receive it on your phone in local currency, usually in seconds.',
+        eyebrow: 'Freelancers, merchants and families',
+        title: 'Get paid by your clients, settled to your phone',
+        body: 'Invoice overseas clients, sell to customers abroad, or receive money from family. They pay by mobile money, card or PayPal; you integrate once and receive it on your phone in local currency, usually in seconds.',
         points: [
             'Share a pay link by WhatsApp, SMS or email.',
-            'Works on any phone, with no internet or bank account needed.',
+            'Works on any phone, with no bank account needed.',
             "If a payment can't be delivered, the payer is refunded automatically.",
         ],
         image: '/images/landing/merchants.jpg',
@@ -126,20 +126,20 @@ const STEPS: {
 }[] = [
     {
         icon: CreditCard,
-        title: 'Pay from anywhere',
-        body: "The payer approves in PayPal's own window, pays by debit or credit card without a PayPal account, or pays from their own mobile-money wallet.",
-        tags: ['PayPal', 'Debit and credit cards', 'Mobile money'],
+        title: 'Accept any way to pay',
+        body: 'Collect from a mobile-money wallet, a debit or credit card, or PayPal — through one integration, with no separate setup for each method.',
+        tags: ['Mobile money', 'Cards', 'PayPal'],
     },
     {
         icon: ArrowLeftRight,
-        title: 'Convert at a locked rate',
-        body: "PayPal's own exchange rate, locked when the payer is quoted, so the amount promised is the amount that arrives.",
-        tags: ['PayPal FX', 'Locked for 10 minutes'],
+        title: 'Route with automatic fallback',
+        body: 'The switch picks an eligible provider and tries the next only when one definitely refuses, so more payments succeed and none is ever paid twice.',
+        tags: ['Sequential fallback', 'Never double-paid'],
     },
     {
         icon: Smartphone,
         title: 'Settle to any wallet',
-        body: "The switch pays the wallet in local currency through the best available provider, usually in seconds, and refunds the payer if it can't.",
+        body: "Money lands in the recipient's mobile-money wallet in local currency, usually in seconds — across providers and countries, from one API.",
         tags: ['MTN MoMo', 'Airtel Money', 'M-Pesa', 'and more'],
     },
 ];
@@ -478,41 +478,46 @@ export default function Welcome({
                             </h1>
 
                             <p className="mt-3 text-base leading-relaxed text-neutral-600 sm:text-lg dark:text-neutral-400">
-                                Orchestrate, route, and optimize transactions
-                                across active payment provider integrations.
+                                Open payment infrastructure for the world and
+                                Africa. Collect, route and settle across mobile
+                                money, cards and PayPal through one integration
+                                you run yourself — and build your product on top
+                                of it.
                             </p>
 
                             <ul className="mt-6 flex flex-col gap-3">
                                 <li className="flex items-start gap-3">
                                     <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
                                     <span className="text-neutral-700 dark:text-neutral-300">
-                                        Configure provider credentials and
-                                        regional availability.
+                                        One integration for payments across
+                                        Africa — mobile money, cards, PayPal and
+                                        AI agents — without wiring up each
+                                        provider yourself.
+                                    </span>
+                                </li>
+                                <li className="flex items-start gap-3">
+                                    <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                                    <span className="text-neutral-700 dark:text-neutral-300">
+                                        Collect mobile money, or move it between
+                                        networks across Africa, through a single
+                                        API.
                                     </span>
                                 </li>
                                 <li className="flex items-start gap-3">
                                     <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
                                     <span className="text-neutral-700 dark:text-neutral-300">
                                         Maximize transaction success with
-                                        automatic, sequential provider fallback.
-                                    </span>
-                                </li>
-                                <li className="flex items-start gap-3">
-                                    <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
-                                    <span className="text-neutral-700 dark:text-neutral-300">
-                                        Collect mobile money through a single
-                                        API — add or remove providers from the
+                                        automatic, sequential provider fallback
+                                        — add or remove providers from the
                                         dashboard without changing your code.
                                     </span>
                                 </li>
                                 <li className="flex items-start gap-3">
                                     <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
                                     <span className="text-neutral-700 dark:text-neutral-300">
-                                        Take PayPal payments from{' '}
-                                        {stats.paypal_countries ?? 'PayPal'}{' '}
-                                        countries and settle them to
-                                        mobile-money wallets in{' '}
-                                        {stats.countries}.
+                                        Accept international payers by card or
+                                        PayPal and settle straight to
+                                        mobile-money wallets in local currency.
                                     </span>
                                 </li>
                             </ul>
@@ -623,15 +628,15 @@ export default function Welcome({
                                 How it works
                             </p>
                             <h2 className="mt-2 text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl dark:text-white">
-                                Pay anyone in Africa, from{' '}
-                                {stats.reach ?? stats.countries} countries
+                                One integration for payments across Africa
                             </h2>
                             <p className="mt-3 leading-relaxed text-neutral-600 dark:text-neutral-400">
-                                Payers anywhere in the world pay with PayPal, a
-                                card or mobile money, and the money arrives in a
-                                mobile-money wallet in local currency. One
-                                integration, used through the API, a pay link,
-                                the Send Money page or an AI agent.
+                                Collect by mobile money across networks, by card
+                                or with PayPal, and the switch routes each
+                                payment and settles it to a mobile-money wallet
+                                in local currency. One integration, used through
+                                the API, a pay link, the Send Money page or an
+                                AI agent.
                             </p>
                         </Reveal>
                         <ol className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -775,7 +780,7 @@ export default function Welcome({
                                 For developers
                             </p>
                             <h2 className="mt-2 text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl dark:text-white">
-                                One API for mobile money and PayPal
+                                One API for every payment method
                             </h2>
                             <p className="mt-3 leading-relaxed text-neutral-600 dark:text-neutral-400">
                                 Every provider sits behind the same JSON API,
@@ -913,9 +918,9 @@ export default function Welcome({
                                 Open source, and yours to run
                             </h2>
                             <p className="mt-3 leading-relaxed text-neutral-600 dark:text-neutral-400">
-                                Deploy MoneyUnify with your own PayPal account
-                                and provider contracts, or try it on the sandbox
-                                first.
+                                Deploy MoneyUnify with your own provider
+                                contracts — mobile money, cards and PayPal — or
+                                try it on the sandbox first.
                             </p>
                         </div>
                         <div className="flex flex-wrap items-center gap-3">
